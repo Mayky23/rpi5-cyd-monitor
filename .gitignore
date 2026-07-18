@@ -1,0 +1,29 @@
+# PlatformIO / embedded build artifacts
+.pio/
+firmware/.pio/
+*.bin
+*.elf
+*.map
+
+# Local credentials
+firmware/include/config.local.h
+server/.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Editors and OS
+.vscode/.browse.c_cpp_db*
+.vscode/ipch/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Logs
+*.log

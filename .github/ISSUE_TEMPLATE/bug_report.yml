@@ -1,0 +1,29 @@
+name: Informe de error
+description: Comunica un problema reproducible
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Descripción
+      description: Explica qué ocurre y qué esperabas.
+    validations:
+      required: true
+  - type: dropdown
+    id: rotation
+    attributes:
+      label: Rotación
+      options: ["0 - Vertical", "1 - Horizontal", "2 - Vertical invertida", "3 - Horizontal invertida", "No aplica"]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs y pasos para reproducir
+      render: shell
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Seguridad
+      options:
+        - label: He eliminado contraseñas, tokens e IP públicas de los logs.
+          required: true

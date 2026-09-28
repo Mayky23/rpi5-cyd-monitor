@@ -9,6 +9,8 @@ monitorizar Proxmox VE. Esta rama instala únicamente las vistas del hipervisor.
 | `rpi5` | Solo Raspberry Pi 5 |
 | `proxmox` | Solo Proxmox VE |
 
+![Todos los paneles de la edición Proxmox VE](docs/panels.png)
+
 ## Funciones
 
 - Estado, uptime, CPU y memoria de los nodos.
@@ -73,7 +75,7 @@ y el panel muestra `OFFLINE` en lugar de datos que ya no son válidos.
 
 ## 3. Instalar el firmware
 
-Conecta la pantalla al PC y ejecuta:
+Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
 
 ```powershell
 .\Install.ps1
@@ -108,5 +110,6 @@ excluido de Git y aparece como `PERSONAL` en la página Arranque.
 ```powershell
 python -m pip install -r server/requirements-dev.txt
 python -m unittest discover -s tests -v
+python firmware/tools/build_gallery.py --check
 pio run -d firmware -e esp32-2432S028R
 ```

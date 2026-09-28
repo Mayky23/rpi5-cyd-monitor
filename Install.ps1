@@ -19,6 +19,11 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 $FirmwareDir = Join-Path $Root "firmware"
 $Edition = (Get-Content (Join-Path $Root "EDITION") -Raw).Trim()
+$VersionPath = Join-Path $Root "VERSION"
+$Version = if (Test-Path $VersionPath) { (Get-Content $VersionPath -Raw).Trim() } else { "desarrollo" }
+if ($Edition -notin @("combined", "rpi5", "proxmox")) {
+    throw "La edicion '$Edition' no es valida. Descarga de nuevo la rama oficial del proyecto."
+}
 
 function Get-Python {
     foreach ($name in @("python", "py")) {
@@ -78,7 +83,7 @@ function Select-Esp32Port([string]$Pio, [string]$RequestedPort) {
     return [string]$likely[$choice - 1].port
 }
 
-Write-Host "CYD Monitor - edicion $Edition" -ForegroundColor Cyan
+Write-Host "CYD Monitor $Version - edicion $Edition" -ForegroundColor Cyan
 $Python = Get-Python
 $Pio = Find-PlatformIO $Python
 $ConfigPath = Join-Path $FirmwareDir "include\config.local.h"
@@ -90,6 +95,11 @@ if (-not $KeepExistingConfig -or -not (Test-Path $ConfigPath)) {
     if (-not $ApiToken) { $ApiToken = Get-PlainSecret "Token de la API" }
     if (-not $WifiSsid -or -not $WifiPassword -or -not $ApiUrl -or -not $ApiToken) {
         throw "Wi-Fi, URL y token son obligatorios."
+    }
+    $parsedApiUrl = $null
+    if (-not [Uri]::TryCreate($ApiUrl, [UriKind]::Absolute, [ref]$parsedApiUrl) -or
+        $parsedApiUrl.Scheme -notin @("http", "https")) {
+        throw "La URL de la API debe comenzar por http:// o https:// y contener un host valido."
     }
     $panelTitle = if ($Edition -eq "proxmox") { "PROXMOX" } elseif ($Edition -eq "rpi5") { "RPI5" } else { "MONITOR" }
     $config = @"
@@ -122,8 +132,12 @@ if (-not $SkipSplash -and -not $SplashImage -and -not $CreateSplash) {
 
 if ($SplashImage -or $CreateSplash) {
     Write-Host "Preparando la pantalla personal..." -ForegroundColor Cyan
-    & $Python -m pip install --user -r (Join-Path $FirmwareDir "tools\requirements.txt")
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar Pillow." }
+    & $Python -c "from PIL import Image" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Instalando el editor de imagenes..." -ForegroundColor Cyan
+        & $Python -m pip install --user -r (Join-Path $FirmwareDir "tools\requirements.txt")
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar Pillow." }
+    }
     $builder = Join-Path $FirmwareDir "tools\build_custom_splash.py"
     if ($SplashImage) {
         $resolvedImage = (Resolve-Path -LiteralPath $SplashImage).Path
@@ -152,4 +166,4 @@ try {
     Pop-Location
 }
 
-Write-Host "Instalacion completada correctamente." -ForegroundColor Green
+Write-Host "Instalacion completada correctamente: CYD Monitor $Version ($Edition)." -ForegroundColor Green

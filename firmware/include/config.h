@@ -37,7 +37,7 @@
 #define MONITOR_PROFILE_RPI5 1
 #define MONITOR_PROFILE_PROXMOX 2
 #ifndef MONITOR_PROFILE
-#define MONITOR_PROFILE MONITOR_PROFILE_COMBINED
+#define MONITOR_PROFILE MONITOR_PROFILE_RPI5
 #endif
 
 // 1 corrige las CYD que muestran el tema oscuro como un negativo blanco/rojo.

@@ -27,3 +27,10 @@ body:
       options:
         - label: He eliminado contraseñas, tokens e IP públicas de los logs.
           required: true
+  - type: input
+    id: edition
+    attributes:
+      label: Edición y versión
+      placeholder: "Ejemplo: rpi5 1.0"
+    validations:
+      required: true

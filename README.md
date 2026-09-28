@@ -11,6 +11,8 @@ Esta es la edicion combinada del proyecto. El repositorio dispone de tres ramas:
 | `rpi5` | Solo Raspberry Pi 5 |
 | `proxmox` | Solo Proxmox VE |
 
+![Todos los paneles de la edición combinada](docs/panels.png)
+
 ## Funciones
 
 - Resumen, CPU, RAM, temperatura, discos, red, puertos y Docker de la RPi5.
@@ -63,7 +65,7 @@ sudo systemctl restart rpi-monitor
 
 ## 2. Instalar el firmware
 
-Conecta la pantalla al PC y ejecuta:
+Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
 
 ```powershell
 .\Install.ps1
@@ -108,6 +110,7 @@ tambien excluido de Git. Selecciona `PERSONAL` desde la pagina Arranque del pane
 ```powershell
 python -m pip install -r server/requirements-dev.txt
 python -m unittest discover -s tests -v
+python firmware/tools/build_gallery.py --check
 pio run -d firmware -e esp32-2432S028R
 ```
 

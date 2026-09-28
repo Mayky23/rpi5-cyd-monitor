@@ -20,7 +20,7 @@
 #define WIFI_PASSWORD "TU_PASSWORD"
 #endif
 #ifndef API_BASE_URL
-#define API_BASE_URL "http://rpi5.local:8787"
+#define API_BASE_URL "http://monitor.local:8787"
 #endif
 #ifndef API_TOKEN
 #define API_TOKEN "PEGA_AQUI_EL_TOKEN"
@@ -30,14 +30,14 @@
 #endif
 
 #ifndef PANEL_TITLE
-#define PANEL_TITLE "RPI5"
+#define PANEL_TITLE "PROXMOX"
 #endif
 
 #define MONITOR_PROFILE_COMBINED 0
 #define MONITOR_PROFILE_RPI5 1
 #define MONITOR_PROFILE_PROXMOX 2
 #ifndef MONITOR_PROFILE
-#define MONITOR_PROFILE MONITOR_PROFILE_COMBINED
+#define MONITOR_PROFILE MONITOR_PROFILE_PROXMOX
 #endif
 
 // 1 corrige las CYD que muestran el tema oscuro como un negativo blanco/rojo.

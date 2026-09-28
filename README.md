@@ -1,11 +1,9 @@
-# CYD Monitor: RPi5 + Proxmox
+# CYD Monitor: Proxmox VE
 
-Panel tactil para **ESP32-2432S028R (Cheap Yellow Display)** que monitoriza una
-Raspberry Pi 5 y un servidor Proxmox VE desde una sola interfaz.
+Panel táctil para **ESP32-2432S028R (Cheap Yellow Display)** dedicado a
+monitorizar Proxmox VE. Esta rama instala únicamente las vistas del hipervisor.
 
-Esta es la edicion combinada del proyecto. El repositorio dispone de tres ramas:
-
-| Rama | Paneles incluidos |
+| Rama | Integración |
 |---|---|
 | `main` | Raspberry Pi 5 y Proxmox VE |
 | `rpi5` | Solo Raspberry Pi 5 |
@@ -13,55 +11,67 @@ Esta es la edicion combinada del proyecto. El repositorio dispone de tres ramas:
 
 ## Funciones
 
-- Resumen, CPU, RAM, temperatura, discos, red, puertos y Docker de la RPi5.
-- Resumen, rendimiento, VM/LXC, almacenamiento y tareas de Proxmox.
-- Graficas historicas independientes con escala adaptativa.
-- Estados claros `ONLINE`, `PARCIAL`, `OFFLINE` y `ERROR`.
-- Cuatro orientaciones, brillo nocturno, diez temas y navegacion tactil.
-- Cuatro animaciones de arranque genericas y una pantalla `PERSONAL`.
-- API de solo lectura protegida con token y certificado Proxmox fijado por SHA-256.
-- Instalador de Windows que detecta la placa, instala dependencias y carga el firmware.
+- Estado, uptime, CPU y memoria de los nodos.
+- Gráficas históricas con escala adaptativa.
+- Inventario y estado de máquinas virtuales y contenedores LXC.
+- Uso y disponibilidad del almacenamiento.
+- Historial de tareas con detalle de errores y cancelaciones.
+- Estado `OFFLINE` sin conservar métricas antiguas cuando Proxmox está apagado.
+- Diagnóstico, brillo nocturno, temas, animaciones y cuatro orientaciones.
+- Instalador de Windows que detecta la ESP32 y carga el firmware.
 
 ## Requisitos
 
-- ESP32-2432S028R con cable USB de datos.
+- ESP32-2432S028R y cable USB de datos.
 - Windows 10/11 con PowerShell y Python 3.10 o posterior.
-- Una Raspberry Pi o equipo Linux Debian para alojar la API.
-- Para esta rama, acceso de solo lectura a la API de Proxmox VE.
+- Un equipo Debian/Linux para alojar la pasarela API.
+- Un token de Proxmox VE con el rol de solo lectura `PVEAuditor`.
 
-## 1. Instalar la API
+## 1. Preparar Proxmox
 
-En el equipo Linux:
+Crea en Proxmox un usuario técnico y un token API dedicados. Asigna únicamente
+el rol `PVEAuditor` sobre `/`; el panel no necesita permisos de escritura.
+Conserva el identificador completo y el secreto que Proxmox muestra una sola vez.
+
+Obtén la huella SHA-256 del certificado desde el equipo que alojará la API:
 
 ```bash
-git clone https://github.com/Mayky23/rpi5-cyd-monitor.git
+openssl s_client -connect proxmox.example.lan:8006 </dev/null 2>/dev/null \
+  | openssl x509 -noout -fingerprint -sha256 \
+  | cut -d= -f2 | tr -d ':'
+```
+
+## 2. Instalar la pasarela API
+
+En un equipo Debian/Linux, preferiblemente uno que permanezca encendido:
+
+```bash
+git clone --branch proxmox --single-branch https://github.com/Mayky23/rpi5-cyd-monitor.git
 cd rpi5-cyd-monitor/server
 sudo ./install.sh
+sudo nano /opt/rpi-monitor/server/.env
 ```
 
-El instalador crea un token aleatorio y conserva `/opt/rpi-monitor/server/.env`
-durante futuras actualizaciones. Consulta el token localmente con:
-
-```bash
-sudo grep '^MONITOR_API_TOKEN=' /opt/rpi-monitor/server/.env
-```
-
-Para activar Proxmox, completa estas variables en ese archivo:
+Completa el archivo sin añadir comillas:
 
 ```dotenv
+MONITOR_API_TOKEN=un-token-largo-y-aleatorio
 PROXMOX_API_URL=https://proxmox.example.lan:8006/api2/json
 PROXMOX_TOKEN_ID=monitor@pve!esp32
-PROXMOX_TOKEN_SECRET=PEGA_EL_SECRETO_DEL_TOKEN
-PROXMOX_CERT_SHA256=HUELLA_SHA256_SIN_DOS_PUNTOS
+PROXMOX_TOKEN_SECRET=secreto-del-token-api
+PROXMOX_CERT_SHA256=huella-sha256-sin-dos-puntos
 ```
 
-Usa un token dedicado con permisos de auditoria. Reinicia la API tras editarlo:
+Aplica la configuración:
 
 ```bash
 sudo systemctl restart rpi-monitor
 ```
 
-## 2. Instalar el firmware
+Si Proxmox está apagado o no responde, la pasarela elimina las métricas antiguas
+y el panel muestra `OFFLINE` en lugar de datos que ya no son válidos.
+
+## 3. Instalar el firmware
 
 Conecta la pantalla al PC y ejecuta:
 
@@ -69,47 +79,34 @@ Conecta la pantalla al PC y ejecuta:
 .\Install.ps1
 ```
 
-El asistente:
+El asistente instala las dependencias, solicita Wi-Fi, URL y token, detecta la
+placa, compila esta edición y la carga por USB. Los datos privados quedan en
+`firmware/include/config.local.h`, que Git ignora.
 
-1. Localiza Python y prepara PlatformIO si hace falta.
-2. Solicita Wi-Fi, URL de la API y token sin publicarlos.
-3. Detecta automaticamente placas ESP32 por USB y permite elegir si hay varias.
-4. Compila la edicion correspondiente a la rama y la carga en la placa.
+## Pantalla de arranque personal
 
-La configuracion privada se guarda en `firmware/include/config.local.h`. Este
-archivo esta excluido de Git.
-
-## Pantalla personalizada
-
-Durante la instalacion se puede:
-
-- Elegir una imagen PNG o JPG, que se adapta a 320x240 y 240x320.
-- Crear un diseño nuevo indicando titulo, subtitulo y color principal.
-
-Tambien se puede generar directamente:
+Durante la instalación puedes elegir un PNG/JPG o crear un diseño con título,
+subtítulo y color. También puedes generarlo directamente:
 
 ```powershell
 python firmware/tools/build_custom_splash.py --source "C:\imagenes\logo.png"
-python firmware/tools/build_custom_splash.py --title "HOME LAB" --subtitle "SYSTEM STATUS" --accent 00D8A0
+python firmware/tools/build_custom_splash.py --title "VIRTUAL LAB" --subtitle "PROXMOX VE" --accent E57000
 ```
 
-El recurso resultante se guarda como `firmware/include/custom_splash.local.h`,
-tambien excluido de Git. Selecciona `PERSONAL` desde la pagina Arranque del panel.
+El generador crea las orientaciones vertical y horizontal. El recurso local está
+excluido de Git y aparece como `PERSONAL` en la página Arranque.
 
 ## Seguridad
 
-- No publiques `config.local.h`, `custom_splash.local.h` ni `.env`.
-- No reutilices contraseñas personales como tokens de la API.
-- No expongas el puerto 8787 directamente a Internet; utiliza una VPN o proxy HTTPS.
-- El certificado de Proxmox se valida mediante su huella SHA-256.
+- Mantén el usuario de Proxmox con permisos estrictamente de auditoría.
+- No publiques `config.local.h`, `custom_splash.local.h` ni `server/.env`.
+- No expongas la pasarela directamente a Internet; utiliza una VPN o proxy HTTPS.
+- La huella SHA-256 impide aceptar un certificado de Proxmox distinto al previsto.
 
-## Desarrollo y pruebas
+## Desarrollo
 
 ```powershell
 python -m pip install -r server/requirements-dev.txt
 python -m unittest discover -s tests -v
 pio run -d firmware -e esp32-2432S028R
 ```
-
-El firmware se valida en CI y las herramientas USB de `firmware/tools` permiten
-capturar paneles, orientaciones, temas y animaciones desde la placa real.

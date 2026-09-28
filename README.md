@@ -9,6 +9,8 @@ monitorizar una Raspberry Pi 5. Esta rama instala únicamente las vistas de RPi5
 | `rpi5` | Solo Raspberry Pi 5 |
 | `proxmox` | Solo Proxmox VE |
 
+![Todos los paneles de la edición Raspberry Pi 5](docs/panels.png)
+
 ## Funciones
 
 - Resumen de CPU, RAM, temperatura, almacenamiento, red y servicios.
@@ -41,7 +43,7 @@ sudo grep '^MONITOR_API_TOKEN=' /opt/rpi-monitor/server/.env
 
 ## 2. Instalar el firmware
 
-Conecta la pantalla al PC y ejecuta:
+Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
 
 ```powershell
 .\Install.ps1
@@ -77,5 +79,6 @@ Se crean automáticamente versiones vertical y horizontal. El archivo generado
 ```powershell
 python -m pip install -r server/requirements-dev.txt
 python -m unittest discover -s tests -v
+python firmware/tools/build_gallery.py --check
 pio run -d firmware -e esp32-2432S028R
 ```

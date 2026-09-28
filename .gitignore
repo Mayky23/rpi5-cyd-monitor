@@ -29,3 +29,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Private full-system recovery bundle
+backup/

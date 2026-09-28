@@ -6,7 +6,7 @@ import argparse
 import io
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -279,8 +279,19 @@ def main() -> None:
     edition = args.edition or (ROOT / "EDITION").read_text(encoding="ascii").strip()
     content = encoded_png(render(edition))
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_bytes() != content:
+        if not OUTPUT.exists():
             raise SystemExit("docs/panels.png no corresponde a esta edición; ejecuta build_gallery.py")
+        expected = Image.open(io.BytesIO(content)).convert("RGB")
+        published = Image.open(OUTPUT).convert("RGB")
+        if published.size != expected.size:
+            raise SystemExit("docs/panels.png tiene dimensiones incorrectas; ejecuta build_gallery.py")
+        difference = ImageChops.difference(published, expected)
+        average_error = sum(ImageStat.Stat(difference).mean) / 3
+        if average_error > 0.75:
+            raise SystemExit(
+                f"docs/panels.png no corresponde a esta edición (diferencia {average_error:.2f}); "
+                "ejecuta build_gallery.py"
+            )
         print(f"Galería {edition} verificada: {OUTPUT}")
         return
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)

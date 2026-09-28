@@ -7,6 +7,8 @@ firmware/.pio/
 
 # Local credentials
 firmware/include/config.local.h
+firmware/include/custom_splash.local.h
+firmware/assets/splashes/custom-preview-*.png
 server/.env
 .env
 

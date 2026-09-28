@@ -8,7 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 apt-get update
 apt-get install -y python3-venv avahi-daemon
 mkdir -p "$INSTALL_DIR/server"
-cp -a "$SCRIPT_DIR/." "$INSTALL_DIR/server/"
+mkdir -p "$INSTALL_DIR/server/app" "$INSTALL_DIR/server/systemd"
+install -m 0644 "$SCRIPT_DIR/app/main.py" "$INSTALL_DIR/server/app/main.py"
+install -m 0644 "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/server/requirements.txt"
+install -m 0644 "$SCRIPT_DIR/systemd/rpi-monitor.service" "$INSTALL_DIR/server/systemd/rpi-monitor.service"
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
 "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/server/requirements.txt"
@@ -24,8 +27,10 @@ chown -R root:root "$INSTALL_DIR"
 chmod 750 "$INSTALL_DIR" "$INSTALL_DIR/server"
 chmod 640 "$INSTALL_DIR/server/.env"
 systemctl daemon-reload
-systemctl enable --now avahi-daemon rpi-monitor.service
+systemctl enable --now avahi-daemon
+systemctl enable rpi-monitor.service
+systemctl restart rpi-monitor.service
 
 echo
 echo "Instalado. API: http://$(hostname).local:8787"
-echo "Token para firmware: $(cut -d= -f2- "$INSTALL_DIR/server/.env")"
+echo "Token conservado en $INSTALL_DIR/server/.env (no se muestra en pantalla)."

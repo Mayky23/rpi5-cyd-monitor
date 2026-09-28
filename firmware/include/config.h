@@ -33,6 +33,13 @@
 #define PANEL_TITLE "RPI5"
 #endif
 
+#define MONITOR_PROFILE_COMBINED 0
+#define MONITOR_PROFILE_RPI5 1
+#define MONITOR_PROFILE_PROXMOX 2
+#ifndef MONITOR_PROFILE
+#define MONITOR_PROFILE MONITOR_PROFILE_COMBINED
+#endif
+
 // 1 corrige las CYD que muestran el tema oscuro como un negativo blanco/rojo.
 #ifndef DISPLAY_INVERT_COLORS
 #define DISPLAY_INVERT_COLORS 1
@@ -40,6 +47,7 @@
 
 // 0 = vertical, 1 = horizontal, 2 = vertical invertida, 3 = horizontal invertida.
 #ifndef DISPLAY_ROTATION
+// Initial orientation; the selection saved on the panel takes precedence.
 #define DISPLAY_ROTATION 1
 #endif
 
@@ -47,7 +55,7 @@
 #define REQUEST_INTERVAL_MS 2500
 #endif
 #ifndef HTTP_TIMEOUT_MS
-#define HTTP_TIMEOUT_MS 4000
+#define HTTP_TIMEOUT_MS 8000
 #endif
 #ifndef STALE_DATA_MS
 #define STALE_DATA_MS 12000
@@ -59,7 +67,13 @@
 #define AUTO_ROTATE_PAGE_MS 0
 #endif
 #ifndef SPLASH_TIME_MS
-#define SPLASH_TIME_MS 650
+#define SPLASH_TIME_MS 3000
+#endif
+#ifndef BOOTSTRAP_TIMEOUT_MS
+#define BOOTSTRAP_TIMEOUT_MS 30000
+#endif
+#ifndef SHUTDOWN_SPLASH_TIME_MS
+#define SHUTDOWN_SPLASH_TIME_MS 1200
 #endif
 
 // Calibración típica del XPT2046 de la ESP32-2432S028R.
@@ -77,4 +91,9 @@
 #endif
 #ifndef TOUCH_DEBUG
 #define TOUCH_DEBUG 0
+#endif
+
+// USB-only framebuffer diagnostics; restore to 0 for normal operation.
+#ifndef SPLASH_CAPTURE_ENABLED
+#define SPLASH_CAPTURE_ENABLED 0
 #endif

@@ -22,7 +22,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 
-APP_VERSION = "3.3.1"
+APP_VERSION = "1.0"
 SCHEMA_VERSION = 2
 API_TOKEN = os.getenv("MONITOR_API_TOKEN", "").strip()
 if not API_TOKEN or API_TOKEN == "change-me":

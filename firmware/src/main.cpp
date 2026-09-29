@@ -1344,17 +1344,29 @@ static void drawDiagnostics(bool full) {
   const bool wifiOk = WiFi.status() == WL_CONNECTED;
   String endpoint = API_BASE_URL;
   endpoint.replace("http://", ""); endpoint.replace("https://", "");
-  const String signal = wifiOk ? String(WiFi.RSSI()) + " dBm" : "--";
-  drawDiagRow(startY, step, labelW, "WiFi", wifiStateText(), wifiOk ? C::OK : C::WARN);
-  drawDiagRow(startY + step, step, labelW, "Red", WIFI_SSID, C::TEXT);
-  drawDiagRow(startY + step * 2, step, labelW, "IP panel", wifiOk ? WiFi.localIP().toString() : "--", C::VALUE);
-  drawDiagRow(startY + step * 3, step, labelW, "Senal", signal, wifiOk && WiFi.RSSI() > -70 ? C::OK : C::WARN);
+  String ssid = WIFI_SSID;
+  String panelIp = wifiOk ? WiFi.localIP().toString() : "--";
+  String signal = wifiOk ? String(WiFi.RSSI()) + " dBm" : "--";
+  String state = wifiStateText();
+  String http = lastHttpCode ? String(lastHttpCode) : "--";
+  String sample = lastGoodSample ? String((millis() - lastGoodSample) / 1000) + " s" : "--";
+  bool wifiGood = wifiOk, signalGood = wifiOk && WiFi.RSSI() > -70;
+  String apiText = lastApiError;
+  bool httpGood = lastHttpCode == 200, apiGood = online;
+#if SPLASH_CAPTURE_ENABLED
+  // Documentation captures must never reveal the real network or server.
+  ssid = "HOME-WIFI"; panelIp = "192.0.2.42"; signal = "-52 dBm"; endpoint = "192.0.2.10:8787";
+  state = "CONECTADO"; http = "200"; sample = "2 s"; apiText = "OK";
+  wifiGood = signalGood = httpGood = apiGood = true;
+#endif
+  drawDiagRow(startY, step, labelW, "WiFi", state, wifiGood ? C::OK : C::WARN);
+  drawDiagRow(startY + step, step, labelW, "Red", ssid, C::TEXT);
+  drawDiagRow(startY + step * 2, step, labelW, "IP panel", panelIp, C::VALUE);
+  drawDiagRow(startY + step * 3, step, labelW, "Senal", signal, signalGood ? C::OK : C::WARN);
   drawDiagRow(startY + step * 4, step, labelW, "Servidor", endpoint, C::TEXT);
-  drawDiagRow(startY + step * 5, step, labelW, "HTTP",
-              lastHttpCode ? String(lastHttpCode) : "--", lastHttpCode == 200 ? C::OK : C::WARN);
-  drawDiagRow(startY + step * 6, step, labelW, "Muestra",
-              lastGoodSample ? String((millis() - lastGoodSample) / 1000) + " s" : "--", online ? C::OK : C::WARN);
-  drawDiagRow(startY + step * 7, step, labelW, "Estado", lastApiError, online ? C::OK : C::WARN);
+  drawDiagRow(startY + step * 5, step, labelW, "HTTP", http, httpGood ? C::OK : C::WARN);
+  drawDiagRow(startY + step * 6, step, labelW, "Muestra", sample, apiGood ? C::OK : C::WARN);
+  drawDiagRow(startY + step * 7, step, labelW, "Estado", apiText, apiGood ? C::OK : C::WARN);
 }
 
 static Rect brightnessButtonRect(bool increase) {

@@ -11,6 +11,8 @@ monitorizar Proxmox VE. Esta rama instala únicamente las vistas del hipervisor.
 
 ![Todos los paneles de la edición Proxmox VE](docs/panels.png)
 
+*Capturas reales de la pantalla, generadas con datos de ejemplo.*
+
 ## Funciones
 
 - Estado, uptime, CPU y memoria de los nodos.
@@ -105,6 +107,15 @@ excluido de Git y aparece como `PERSONAL` en la página Arranque.
 - No expongas la pasarela directamente a Internet; utiliza una VPN o proxy HTTPS.
 - La huella SHA-256 impide aceptar un certificado de Proxmox distinto al previsto.
 
+## Estructura
+
+| Ruta | Contenido |
+|---|---|
+| `server/` | API FastAPI de solo lectura, instalador y servicio systemd. |
+| `firmware/` | Firmware PlatformIO, fuentes, animaciones y herramientas de generación y captura. |
+| `tests/` | Pruebas de la API. |
+| `Install.ps1` | Instalador guiado para Windows. |
+
 ## Desarrollo
 
 ```powershell
@@ -113,3 +124,19 @@ python -m unittest discover -s tests -v
 python firmware/tools/build_gallery.py --check
 pio run -d firmware -e esp32-2432S028R
 ```
+
+El firmware se valida en CI. Las herramientas USB de `firmware/tools` capturan
+los paneles, orientaciones, temas y animaciones desde la placa real.
+
+Para regenerar la imagen de este README, instala
+`firmware/tools/requirements.txt`, carga el firmware con capturas y ejecuta el
+generador. Usa datos de ejemplo, así que no expone tu red ni tus servidores:
+
+```powershell
+$env:PLATFORMIO_BUILD_FLAGS = "-D SPLASH_CAPTURE_ENABLED=1"
+pio run -d firmware -e esp32-2432S028R -t upload
+python firmware/tools/build_gallery.py --capture --port COM3
+```
+
+Después ejecuta `Remove-Item Env:PLATFORMIO_BUILD_FLAGS` y vuelve a cargar el
+firmware normal con `.\Install.ps1`.

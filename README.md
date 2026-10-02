@@ -64,15 +64,4 @@ edición (`bootloader.bin`, `partitions.bin`, `boot_app0.bin`, `firmware.bin`,
 python web/build_site.py --artifacts artifacts --out site
 python -m http.server 8000 --directory site
 ```
-
 Después abre <http://localhost:8000>. Web Serial funciona en `localhost` y en HTTPS.
-
-### Publicar
-
-En *Settings → Pages* elige *Source: GitHub Actions*. El flujo se lanza con cada
-`push` a `web` o a mano desde *Actions*. Como compila las ramas de edición, sube
-antes `rpi5`, `proxmox` y `rpi5-proxmox`, y `web` al final.
-
-Los logotipos de Raspberry Pi y Proxmox son marcas de sus respectivos
-propietarios y se usan solo para identificar cada edición. La tipografía de los
-títulos es Aileron, de Sora Sagano, sin derechos reservados.

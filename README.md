@@ -3,15 +3,23 @@
 Panel táctil para **ESP32-2432S028R (Cheap Yellow Display)** dedicado a
 monitorizar una Raspberry Pi 5. Esta rama instala únicamente las vistas de RPi5.
 
-| Rama | Integración |
+| Rama | Contenido |
 |---|---|
-| `main` | Raspberry Pi 5 y Proxmox VE |
+| `web` | Instalador web (GitHub Pages) |
+| `rpi5-proxmox` | Edición completa: Raspberry Pi 5 y Proxmox VE |
 | `rpi5` | Solo Raspberry Pi 5 |
 | `proxmox` | Solo Proxmox VE |
 
 ![Todos los paneles de la edición Raspberry Pi 5](docs/panels.png)
 
 *Capturas reales de la pantalla, generadas con datos de ejemplo.*
+
+## Instalación rápida desde el navegador
+
+Sin instalar nada en el PC: abre **<https://mayky23.github.io/rpi5-cyd-monitor/>**
+con Chrome, Edge u Opera, elige la edición, escribe tu Wi-Fi, la dirección de la
+API y el token, conecta la placa y pulsa *Instalar*. La propia página te da los
+comandos exactos para instalar la API en tu servidor.
 
 ## Funciones
 

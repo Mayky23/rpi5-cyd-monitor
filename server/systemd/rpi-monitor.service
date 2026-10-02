@@ -10,7 +10,7 @@ Group=root
 WorkingDirectory=/opt/rpi-monitor/server
 EnvironmentFile=/opt/rpi-monitor/server/.env
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/opt/rpi-monitor/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8787 --workers 1
+ExecStart=/opt/rpi-monitor/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${MONITOR_PORT} --workers 1
 Restart=always
 RestartSec=3
 

@@ -11,6 +11,7 @@
 #include <XPT2046_Touchscreen.h>
 #include <esp_system.h>
 #include "config.h"
+#include "runtime_config.h"
 #include "splash_scenes.h"
 #include "panel_data.h"
 #include "ui_type.h"
@@ -61,6 +62,7 @@ SPIClass touchSpi(VSPI);
 XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
 JsonDocument snapshot;
 Preferences preferences;
+static RuntimeConfig::Values netConfig;
 
 constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
   return static_cast<uint16_t>(((r & 0xF8u) << 8u) | ((g & 0xFCu) << 3u) | (b >> 3u));
@@ -1342,9 +1344,9 @@ static void drawDiagnostics(bool full) {
   const int16_t step = (card.h - 30) / 8;
   const int16_t labelW = LANDSCAPE ? 66 : 59;
   const bool wifiOk = WiFi.status() == WL_CONNECTED;
-  String endpoint = API_BASE_URL;
+  String endpoint = netConfig.apiBase;
   endpoint.replace("http://", ""); endpoint.replace("https://", "");
-  String ssid = WIFI_SSID;
+  String ssid = netConfig.ssid;
   String panelIp = wifiOk ? WiFi.localIP().toString() : "--";
   String signal = wifiOk ? String(WiFi.RSSI()) + " dBm" : "--";
   String state = wifiStateText();
@@ -1764,11 +1766,11 @@ static bool requestSnapshot(ApiResponse &response) {
   const uint16_t timeout = bootstrapping ? 7000 : HTTP_TIMEOUT_MS;
   http.setConnectTimeout(timeout);
   http.setTimeout(timeout);
-  if (!http.begin(String(API_BASE_URL) + "/api/v2/snapshot")) {
+  if (!http.begin(netConfig.apiBase + "/api/v2/snapshot")) {
     response.error = "URL API invalida";
     return false;
   }
-  http.addHeader("X-API-Key", API_TOKEN);
+  http.addHeader("X-API-Key", netConfig.token);
   response.httpCode = http.GET();
   if (response.httpCode != HTTP_CODE_OK) {
     response.error = response.httpCode == HTTP_CODE_UNAUTHORIZED ? "Token incorrecto" :
@@ -1877,8 +1879,8 @@ static void manageWifi() {
   Serial.println("Conectando WiFi...");
   WiFi.disconnect(false, false);
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname(DEVICE_NAME);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.setHostname(netConfig.deviceName.c_str());
+  WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str());
   nextWifiAttempt = millis() + reconnectDelay;
   reconnectDelay = u32Min(reconnectDelay * 2, 30000u);
 }
@@ -2376,6 +2378,8 @@ static void displayTestLoop() {
 
 void setup() {
   Serial.begin(SPLASH_CAPTURE_ENABLED ? 460800 : 115200);
+  netConfig = RuntimeConfig::load();
+  Serial.printf("Configuracion de red: %s\n", netConfig.fromFlash ? "instalador web" : "compilada");
 
   pinMode(TFT_BL, OUTPUT);
   ledcSetup(0, 5000, 8);

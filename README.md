@@ -1,151 +1,78 @@
-# CYD Monitor: RPi5 + Proxmox
+# CYD Monitor Installer
 
-Panel táctil para **ESP32-2432S028R (Cheap Yellow Display)** que monitoriza una
-Raspberry Pi 5 y un servidor Proxmox VE desde una sola interfaz.
+Esta rama (`web`) aloja el **instalador web** de CYD Monitor, el panel táctil para
+la **ESP32-2432S028R (Cheap Yellow Display)** que vigila una Raspberry Pi 5, un
+servidor Proxmox VE o ambos.
 
-Esta es la edición combinada del proyecto. El repositorio dispone de tres ramas:
+**<https://mayky23.github.io/rpi5-cyd-monitor/>**
 
-| Rama | Paneles incluidos |
-|---|---|
-| `main` | Raspberry Pi 5 y Proxmox VE |
-| `rpi5` | Solo Raspberry Pi 5 |
-| `proxmox` | Solo Proxmox VE |
+Abre la página con Chrome, Edge u Opera, elige qué quieres vigilar, escribe tu
+Wi-Fi, la dirección de la API y el token, conecta la placa por USB y pulsa
+*Instalar*. La página también te da los comandos para instalar la API en tu
+servidor. No hace falta descargar nada ni instalar programas en el PC.
 
-![Todos los paneles de la edición combinada](docs/panels.png)
+## ¿Qué rama necesito?
 
-*Capturas reales de la pantalla, generadas con datos de ejemplo.*
+El proyecto tiene **una rama por herramienta**. Cada una contiene su propio
+firmware, su API, su instalador de Windows y su documentación, y no comparten
+código entre sí. Elige la rama según lo que quieras monitorizar:
 
-## Funciones
+| Quiero vigilar… | Rama | Paneles |
+|---|---|---|
+| **Una Raspberry Pi 5 y un servidor Proxmox** en la misma pantalla | [`rpi5-proxmox`](../../tree/rpi5-proxmox) | 17 |
+| **Solo una Raspberry Pi 5** | [`rpi5`](../../tree/rpi5) | 12 |
+| **Solo un servidor Proxmox VE** | [`proxmox`](../../tree/proxmox) | 10 |
+| Instalarlo desde el navegador, sin clonar nada | `web` (esta rama) | — |
 
-- Resumen, CPU, RAM, temperatura, discos, red, puertos y Docker de la RPi5.
-- Resumen, rendimiento, VM/LXC, almacenamiento y tareas de Proxmox.
-- Gráficas históricas independientes con escala adaptativa.
-- Estados claros `ONLINE`, `PARCIAL`, `OFFLINE` y `ERROR`.
-- Cuatro orientaciones, brillo nocturno, diez temas y navegación táctil.
-- Cuatro animaciones de arranque genéricas y una pantalla `PERSONAL`.
-- API de solo lectura protegida con token y certificado Proxmox fijado por SHA-256.
-- Instalador de Windows que detecta la placa, instala dependencias y carga el firmware.
+Si usas el instalador web **no tienes que elegir ni clonar ninguna rama**: la
+página lo hace por ti según la edición que marques en el primer paso. Las ramas
+solo te hacen falta si prefieres compilar el firmware tú mismo, modificar el
+código o instalar la API a mano.
 
-## Requisitos
-
-- ESP32-2432S028R con cable USB de datos.
-- Windows 10/11 con PowerShell y Python 3.10 o posterior.
-- Una Raspberry Pi o equipo Debian/Linux para alojar la API.
-- Un token de Proxmox VE con el rol de solo lectura `PVEAuditor`.
-
-## 1. Instalar la API
-
-En el equipo Linux:
+Para descargar solo la que necesites:
 
 ```bash
-git clone https://github.com/Mayky23/rpi5-cyd-monitor.git
-cd rpi5-cyd-monitor/server
-sudo ./install.sh
+git clone --branch rpi5 --single-branch https://github.com/Mayky23/rpi5-cyd-monitor.git
 ```
 
-El instalador crea un token aleatorio y conserva `/opt/rpi-monitor/server/.env`
-durante futuras actualizaciones. Consúltalo localmente con:
+Cambia `rpi5` por `proxmox` o `rpi5-proxmox` según el caso. Cada rama tiene su
+`README.md` con los pasos completos.
 
-```bash
-sudo grep '^MONITOR_API_TOKEN=' /opt/rpi-monitor/server/.env
-```
+## Cómo funciona
 
-Para activar Proxmox, completa estas variables en ese archivo sin añadir comillas:
+1. `.github/workflows/pages.yml` compila el firmware de las tres ramas de edición.
+2. `web/build_site.py` reúne los binarios y la página en un único sitio.
+3. GitHub Pages lo publica. La página carga el firmware con
+   [ESP Web Tools](https://esphome.github.io/esp-web-tools/) mediante Web Serial.
 
-```dotenv
-PROXMOX_API_URL=https://proxmox.example.lan:8006/api2/json
-PROXMOX_TOKEN_ID=monitor@pve!esp32
-PROXMOX_TOKEN_SECRET=secreto-del-token-api
-PROXMOX_CERT_SHA256=huella-sha256-sin-dos-puntos
-```
+Los datos que escribes (Wi-Fi, dirección de la API y token) se generan en tu
+navegador y se graban en la placa por USB; no se envían a ningún servidor. El
+firmware los lee de un bloque de 4 KB de su memoria flash
+(`firmware/include/runtime_config.h`, en las ramas de edición).
 
-Usa un token dedicado con el rol `PVEAuditor` sobre `/`. Obtén la huella del
-certificado desde el equipo que aloja la API:
-
-```bash
-openssl s_client -connect proxmox.example.lan:8006 </dev/null 2>/dev/null \
-  | openssl x509 -noout -fingerprint -sha256 \
-  | cut -d= -f2 | tr -d ':'
-```
-
-Reinicia la API tras editar el archivo:
-
-```bash
-sudo systemctl restart rpi-monitor
-```
-
-Si Proxmox está apagado o no responde, la API descarta las métricas antiguas y
-el panel muestra `OFFLINE` en lugar de datos que ya no son válidos.
-
-## 2. Instalar el firmware
-
-Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
+## Desarrollo
 
 ```powershell
-.\Install.ps1
-```
-
-El asistente:
-
-1. Localiza Python y prepara PlatformIO si hace falta.
-2. Solicita Wi-Fi, URL de la API y token sin publicarlos.
-3. Detecta automáticamente placas ESP32 por USB y permite elegir si hay varias.
-4. Compila la edición correspondiente a la rama y la carga en la placa.
-
-La configuración privada se guarda en `firmware/include/config.local.h`. Este
-archivo está excluido de Git.
-
-## Pantalla de arranque personal
-
-Durante la instalación puedes elegir una imagen PNG/JPG, que se adapta a
-320x240 y 240x320, o crear un diseño con título, subtítulo y color. También
-puedes generarlo directamente:
-
-```powershell
-python firmware/tools/build_custom_splash.py --source "C:\imagenes\logo.png"
-python firmware/tools/build_custom_splash.py --title "HOME LAB" --subtitle "SYSTEM STATUS" --accent 00D8A0
-```
-
-El recurso resultante se guarda como `firmware/include/custom_splash.local.h`,
-también excluido de Git. Selecciona `PERSONAL` desde la página Arranque del panel.
-
-## Seguridad
-
-- No publiques `config.local.h`, `custom_splash.local.h` ni `.env`.
-- No reutilices contraseñas personales como tokens de la API.
-- No expongas el puerto 8787 directamente a Internet; utiliza una VPN o proxy HTTPS.
-- El certificado de Proxmox se valida mediante su huella SHA-256.
-
-## Estructura
-
-| Ruta | Contenido |
-|---|---|
-| `server/` | API FastAPI de solo lectura, instalador y servicio systemd. |
-| `firmware/` | Firmware PlatformIO, fuentes, animaciones y herramientas de generación y captura. |
-| `tests/` | Pruebas de la API. |
-| `Install.ps1` | Instalador guiado para Windows. |
-
-## Desarrollo y pruebas
-
-```powershell
-python -m pip install -r server/requirements-dev.txt
 python -m unittest discover -s tests -v
-python firmware/tools/build_gallery.py --check
-pio run -d firmware -e esp32-2432S028R
 ```
 
-El firmware se valida en CI. Las herramientas USB de `firmware/tools` capturan
-los paneles, orientaciones, temas y animaciones desde la placa real.
-
-Para regenerar la imagen de este README, instala
-`firmware/tools/requirements.txt`, carga el firmware con capturas y ejecuta el
-generador. Usa datos de ejemplo, así que no expone tu red ni tus servidores:
+Para ver la página en local necesitas una carpeta con los binarios de cada
+edición (`bootloader.bin`, `partitions.bin`, `boot_app0.bin`, `firmware.bin`,
+`VERSION` y `COMMIT`):
 
 ```powershell
-$env:PLATFORMIO_BUILD_FLAGS = "-D SPLASH_CAPTURE_ENABLED=1"
-pio run -d firmware -e esp32-2432S028R -t upload
-python firmware/tools/build_gallery.py --capture --port COM3
+python web/build_site.py --artifacts artifacts --out site
+python -m http.server 8000 --directory site
 ```
 
-Después ejecuta `Remove-Item Env:PLATFORMIO_BUILD_FLAGS` y vuelve a cargar el
-firmware normal con `.\Install.ps1`.
+Después abre <http://localhost:8000>. Web Serial funciona en `localhost` y en HTTPS.
+
+### Publicar
+
+En *Settings → Pages* elige *Source: GitHub Actions*. El flujo se lanza con cada
+`push` a `web` o a mano desde *Actions*. Como compila las ramas de edición, sube
+antes `rpi5`, `proxmox` y `rpi5-proxmox`, y `web` al final.
+
+Los logotipos de Raspberry Pi y Proxmox son marcas de sus respectivos
+propietarios y se usan solo para identificar cada edición. La tipografía de los
+títulos es Aileron, de Sora Sagano, sin derechos reservados.

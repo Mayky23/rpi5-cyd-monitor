@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CYD Monitor Installer</title>
+  <meta name="description" content="Carga el firmware de CYD Monitor en tu ESP32-2432S028R desde el navegador.">
+  <meta name="theme-color" content="#101311">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%23f0b429'/%3E%3Crect x='6' y='8' width='20' height='14' rx='1.5' fill='%23101311'/%3E%3Cpath d='M9 18l4-5 3 3 5-6' fill='none' stroke='%2343c6f2' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preload" href="fonts/Aileron-Bold.otf" as="font" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+
+  <header class="top">
+    <div class="top-in">
+      <span class="mark"><i aria-hidden="true"></i>CYD Monitor</span>
+      <nav aria-label="Enlaces">
+        <span class="build" id="build" hidden></span>
+      </nav>
+    </div>
+  </header>
+
+  <div class="frame">
+    <main id="contenido">
+      <section class="intro">
+        <p class="eyebrow">ESP32-2432S028R · Cheap Yellow Display</p>
+        <h1>CYD Monitor Installer</h1>
+        <p class="lead">Carga el firmware en tu pantalla desde el navegador, sin programas ni cables raros. Elige qué quieres vigilar, escribe los datos de tu red y pulsa instalar.</p>
+        <ul class="needs">
+          <li>Chrome, Edge u Opera en un ordenador</li>
+          <li>Cable USB que transmita datos</li>
+          <li>Una Raspberry Pi, un Proxmox o ambos</li>
+        </ul>
+        <p class="alert" id="unsupported" role="alert" hidden>
+          Este navegador no puede hablar con la placa por USB. Abre esta página con <strong>Chrome</strong>, <strong>Edge</strong> u <strong>Opera</strong> en un ordenador.
+        </p>
+      </section>
+
+      <!-- 01 -->
+      <section class="step" id="paso-1" aria-labelledby="t1">
+        <div class="num" aria-hidden="true">01</div>
+        <div class="body">
+          <h2 id="t1">¿Qué quieres vigilar?</h2>
+          <fieldset class="editions">
+            <legend class="sr">Edición del firmware</legend>
+            <label class="ed">
+              <input type="radio" name="edition" value="combined" checked>
+              <span class="ed-logos"><img src="img/raspberrypi.svg" alt="Raspberry Pi"><img src="img/proxmox.svg" alt="Proxmox"></span>
+              <span class="ed-text"><strong>Raspberry Pi 5 y Proxmox</strong><small>Los dos equipos en la misma pantalla.</small></span>
+              <span class="ed-count">17 paneles</span>
+            </label>
+            <label class="ed">
+              <input type="radio" name="edition" value="rpi5">
+              <span class="ed-logos"><img src="img/raspberrypi.svg" alt="Raspberry Pi"></span>
+              <span class="ed-text"><strong>Solo Raspberry Pi 5</strong><small>CPU, memoria, temperatura, discos, red, puertos y Docker.</small></span>
+              <span class="ed-count">12 paneles</span>
+            </label>
+            <label class="ed">
+              <input type="radio" name="edition" value="proxmox">
+              <span class="ed-logos"><img src="img/proxmox.svg" alt="Proxmox"></span>
+              <span class="ed-text"><strong>Solo Proxmox VE</strong><small>Nodos, máquinas virtuales, almacenamiento y tareas.</small></span>
+              <span class="ed-count">10 paneles</span>
+            </label>
+          </fieldset>
+        </div>
+      </section>
+
+      <!-- 02 -->
+      <section class="step" id="paso-2" aria-labelledby="t2">
+        <div class="num" aria-hidden="true">02</div>
+        <div class="body">
+          <h2 id="t2">Datos de conexión</h2>
+          <p class="note">Se graban en la placa por USB desde tu navegador. No se envían a ningún servidor ni se guardan en esta página.</p>
+
+          <div class="group">
+            <h3>La pantalla</h3>
+            <div class="row">
+              <div class="field">
+                <label for="ssid">Nombre de tu Wi-Fi</label>
+                <input id="ssid" autocomplete="off" spellcheck="false" placeholder="MiWiFi">
+                <p class="err" id="err-ssid"></p>
+              </div>
+              <div class="field">
+                <label for="wifiPass">Contraseña de la Wi-Fi</label>
+                <div class="with-btn">
+                  <input id="wifiPass" type="password" autocomplete="off" spellcheck="false" maxlength="64">
+                  <button type="button" class="mini" data-toggle="wifiPass" aria-label="Mostrar u ocultar la contraseña">Ver</button>
+                </div>
+                <p class="err" id="err-wifiPass"></p>
+              </div>
+            </div>
+            <div class="field">
+              <label for="deviceName">Nombre de la pantalla en tu red</label>
+              <input id="deviceName" autocomplete="off" spellcheck="false" maxlength="32" value="rpi-panel">
+              <p class="hint">Así la verás en la lista de dispositivos de tu router. Déjalo como está o pon el que quieras: solo letras, números y guiones.</p>
+              <p class="err" id="err-deviceName"></p>
+            </div>
+          </div>
+
+          <div class="group">
+            <h3>La API <span>el programa que reúne los datos y se los pasa a la pantalla</span></h3>
+            <div class="field">
+              <label for="api">Dirección de la API</label>
+              <input id="api" class="mono" autocomplete="off" spellcheck="false" placeholder="http://192.168.1.50:8787">
+              <p class="hint">La IP del equipo donde instalarás la API (paso 4) y el puerto. <strong>Elige el que prefieras</strong>: la API quedará escuchando justo ahí. Lo habitual es <code>:8787</code>; sin puerto se usa el 80.</p>
+              <details class="help">
+                <summary>No sé cuál es la IP de mi equipo</summary>
+                <p>Entra en ese equipo y ejecuta <code>hostname -I</code>: el primer número que salga es su IP. También puedes usar su nombre seguido de <code>.local</code>, por ejemplo <code>http://raspberrypi.local:8787</code>; el nombre lo da el comando <code>hostname</code>.</p>
+              </details>
+              <p class="err" id="err-api"></p>
+            </div>
+            <div class="field">
+              <label for="token">Token de acceso</label>
+              <div class="with-btn">
+                <input id="token" class="mono" autocomplete="off" spellcheck="false" maxlength="128">
+                <button type="button" class="mini" id="copyToken">Copiar</button>
+                <button type="button" class="mini" id="genToken">Regenerar</button>
+              </div>
+              <p class="hint">Es la contraseña entre la pantalla y la API. Ya te he generado uno; el mismo valor aparece en los comandos del paso 4.</p>
+              <p class="err" id="err-token"></p>
+            </div>
+          </div>
+
+          <div class="group" id="proxmoxGroup">
+            <h3>Proxmox <span>opcional, solo para el comando del paso 4</span></h3>
+            <div class="field">
+              <label for="pveUrl">Dirección de la API de Proxmox</label>
+              <input id="pveUrl" class="mono" autocomplete="off" spellcheck="false" placeholder="https://proxmox.local:8006/api2/json">
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="pveId">ID del token</label>
+                <input id="pveId" class="mono" autocomplete="off" spellcheck="false" placeholder="monitor@pve!esp32">
+              </div>
+              <div class="field">
+                <label for="pveSecret">Secreto del token</label>
+                <div class="with-btn">
+                  <input id="pveSecret" class="mono" type="password" autocomplete="off" spellcheck="false">
+                  <button type="button" class="mini" data-toggle="pveSecret" aria-label="Mostrar u ocultar el secreto">Ver</button>
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label for="pveCert">Huella SHA-256 del certificado</label>
+              <input id="pveCert" class="mono" autocomplete="off" spellcheck="false" placeholder="64 caracteres hexadecimales">
+            </div>
+            <details class="help">
+              <summary>Cómo crear el token y sacar la huella</summary>
+              <p>En Proxmox crea un usuario técnico con un token API y dale solo el rol <code>PVEAuditor</code> sobre <code>/</code>. Es de solo lectura. Después, la huella se obtiene desde el equipo de la API:</p>
+              <div class="term"><div class="term-bar"><span>bash</span><button type="button" class="mini" data-copy="cmdFingerprint">Copiar</button></div><pre id="cmdFingerprint"></pre></div>
+            </details>
+            <p class="hint">Si lo dejas vacío podrás completarlo más tarde editando <code>/opt/rpi-monitor/server/.env</code> en el servidor.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 -->
+      <section class="step" id="paso-3" aria-labelledby="t3">
+        <div class="num" aria-hidden="true">03</div>
+        <div class="body">
+          <h2 id="t3">Conecta la placa e instala</h2>
+          <ol class="how">
+            <li>Conecta la ESP32 al ordenador con el cable USB.</li>
+            <li>Pulsa <strong>Instalar</strong> y elige el puerto de la lista; suele llamarse <em>CH340</em>, <em>CP210x</em> o <em>USB Serial</em>.</li>
+            <li>Espera a que termine. La pantalla se reinicia sola.</li>
+          </ol>
+
+          <dl class="summary" id="summary" aria-live="polite"></dl>
+
+          <div class="actions">
+            <esp-web-install-button id="installFull">
+              <button slot="activate" class="go" id="btnFull" type="button" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Instalar en la placa
+              </button>
+              <span slot="unsupported" class="alert">Navegador no compatible: usa Chrome, Edge u Opera.</span>
+              <span slot="not-allowed" class="alert">Esta página necesita HTTPS para acceder al USB.</span>
+            </esp-web-install-button>
+            <esp-web-install-button id="installConfig">
+              <button slot="activate" class="link" id="btnConfig" type="button" disabled>Solo cambiar la configuración</button>
+              <span slot="unsupported"></span>
+              <span slot="not-allowed"></span>
+            </esp-web-install-button>
+          </div>
+          <p class="gate" id="gate" aria-live="polite"></p>
+          <p class="hint" id="firmwareInfo"></p>
+
+          <details class="help">
+            <summary>La placa no aparece en la lista</summary>
+            <ul>
+              <li>Prueba con otro cable: muchos solo cargan y no transmiten datos.</li>
+              <li>En Windows puede hacer falta el <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener">controlador CH340</a>.</li>
+              <li>Si falla al conectar, mantén pulsado el botón <strong>BOOT</strong> de la placa mientras pulsas instalar.</li>
+              <li>Cierra cualquier programa que esté usando el puerto: Arduino IDE, PlatformIO o un monitor serie.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <!-- 04 -->
+      <section class="step" id="paso-4" aria-labelledby="t4">
+        <div class="num" aria-hidden="true">04</div>
+        <div class="body">
+          <h2 id="t4">Instala la API en tu servidor</h2>
+          <p class="note">En la Raspberry Pi o el equipo Debian/Linux que tenga que estar siempre encendido. Los comandos ya llevan tus datos.</p>
+          <div class="term">
+            <div class="term-bar"><span>Instalación</span><button type="button" class="mini" data-copy="cmdInstall">Copiar</button></div>
+            <pre id="cmdInstall"></pre>
+          </div>
+          <div class="term">
+            <div class="term-bar"><span>Comprobar que responde</span><button type="button" class="mini" data-copy="cmdCheck">Copiar</button></div>
+            <pre id="cmdCheck"></pre>
+          </div>
+          <p class="hint">Si todo va bien, el segundo comando devuelve un texto con <code>"ok":true</code> y en unos segundos la pantalla empieza a mostrar datos. Para cambiar algo después, repite el paso 3 con <em>Solo cambiar la configuración</em>.</p>
+        </div>
+      </section>
+    </main>
+
+    <aside class="stage" aria-label="Vista previa">
+      <figure class="device" id="device">
+        <div class="board">
+          <i class="hole a"></i><i class="hole b"></i><i class="hole c"></i><i class="hole d"></i>
+          <div class="bezel">
+            <div class="screen" id="screen" title="Toca a izquierda o derecha para cambiar de panel">
+              <img alt="" id="shotA"><img alt="" id="shotB">
+            </div>
+          </div>
+          <div class="usb" aria-hidden="true"></div>
+          <i class="led" aria-hidden="true"></i>
+        </div>
+        <figcaption>
+          <strong id="shotName">RPI5</strong>
+          <span id="shotIndex"></span>
+        </figcaption>
+      </figure>
+      <div class="dots" id="dots" role="tablist" aria-label="Paneles"></div>
+      <p class="stage-note">Capturas reales de la pantalla con datos de ejemplo. Toca a un lado para cambiar de panel.</p>
+    </aside>
+  </div>
+
+  <footer class="foot">
+    <p>
+      Raspberry Pi y Proxmox son marcas de sus propietarios; sus logotipos solo identifican cada edición.
+      Tipografía Aileron, de Sora Sagano (sin derechos reservados).
+      La carga usa <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">ESP Web Tools</a>.
+    </p>
+  </footer>
+</body>
+</html>

@@ -1,23 +1,16 @@
-# PlatformIO / embedded build artifacts
-.pio/
-firmware/.pio/
-*.bin
-*.elf
-*.map
-
-# Local credentials
-firmware/include/config.local.h
-firmware/include/custom_splash.local.h
-firmware/assets/splashes/custom-preview-*.png
-server/.env
+# Local credentials and private backups
 .env
+backup/
+BACKUP/
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-.pytest_cache/
+
+# Generated site
+site/
 
 # Editors and OS
 .vscode/.browse.c_cpp_db*
@@ -26,10 +19,4 @@ venv/
 .DS_Store
 Thumbs.db
 *.swp
-
-# Logs
 *.log
-
-# Private full-system recovery bundle
-backup/
-BACKUP/

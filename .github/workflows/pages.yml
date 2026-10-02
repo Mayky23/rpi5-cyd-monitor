@@ -1,0 +1,106 @@
+name: Web installer
+
+# Publishes the web installer and the firmware of every edition to GitHub Pages.
+# The firmware of each edition is built from its own branch. Push rpi5, proxmox and
+# rpi5-proxmox before web so the run started by web sees them, or run this workflow by hand.
+"on":
+  push:
+    branches: [web]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - edition: combined
+            branch: rpi5-proxmox
+          - edition: rpi5
+            branch: rpi5
+          - edition: proxmox
+            branch: proxmox
+    steps:
+      - name: Checkout ${{ matrix.branch }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Build firmware
+        run: |
+          pip install platformio
+          pio run -d firmware -e esp32-2432S028R
+
+      - name: Collect images
+        run: |
+          mkdir -p out
+          build=firmware/.pio/build/esp32-2432S028R
+          cp "$build/bootloader.bin" "$build/partitions.bin" "$build/firmware.bin" out/
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin out/
+          echo "$(cat VERSION)" > out/VERSION
+          git rev-parse --short HEAD > out/COMMIT
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.edition }}
+          path: out
+          if-no-files-found: error
+
+  deploy:
+    needs: firmware
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download firmware
+        uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: artifacts
+
+      - name: Build site
+        run: |
+          for dir in artifacts/firmware-*; do mv "$dir" "artifacts/${dir#artifacts/firmware-}"; done
+          python3 web/build_site.py --artifacts artifacts --out site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

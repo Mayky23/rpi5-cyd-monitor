@@ -6,7 +6,7 @@ name: CI
   workflow_dispatch:
 
 jobs:
-  validate-and-build:
+  site:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -16,31 +16,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            server/requirements.txt
-            server/requirements-dev.txt
-            firmware/tools/requirements.txt
 
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
+      - name: Check the site build
+        run: python -m unittest discover -s tests -v
 
-      - name: Install tools
+      - name: Check the page scripts
         run: |
-          python -m pip install --upgrade pip
-          pip install platformio
-          pip install -r server/requirements-dev.txt
-          pip install -r firmware/tools/requirements.txt
-
-      - name: Validate project
-        run: |
-          python -m unittest discover -s tests -v
-          python firmware/tools/build_gallery.py --check
-
-      - name: Build firmware
-        run: pio run -d firmware -e esp32-2432S028R -e profile-rpi5 -e profile-proxmox
+          cp web/app.js /tmp/app.mjs && cp web/lib.js /tmp/lib.mjs
+          node --check /tmp/app.mjs && node --check /tmp/lib.mjs

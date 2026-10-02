@@ -13,7 +13,7 @@ const SCREENS = {
 };
 const EDITION_NAMES = { combined: "Raspberry Pi 5 y Proxmox", rpi5: "Raspberry Pi 5", proxmox: "Proxmox VE" };
 
-const state = { info: null, blobs: [], touched: new Set(), shot: 0, timer: null, front: "shotA" };
+const state = { info: null, blobs: [], touched: new Set(), shot: 0, timer: null, front: "shotA", vertical: false, auto: true, ticks: 0 };
 
 const edition = () => document.querySelector("input[name=edition]:checked").value;
 const values = () => Object.fromEntries(fields.map((id) => [id, id === "wifiPass" ? $(id).value : $(id).value.trim()]));
@@ -40,11 +40,22 @@ function showShot(index, { manual = false } = {}) {
     state.front = next.id;
     next.onload = null;
   };
-  next.src = `img/screens/${edition()}/${file}.png`;
+  next.classList.toggle("v", state.vertical);
+  next.src = `img/screens/${edition()}/${file}${state.vertical ? "-v" : ""}.png`;
   $("shotName").textContent = name;
-  $("shotIndex").textContent = `${state.shot + 1} / ${set.length}`;
+  $("shotIndex").textContent = `${state.vertical ? "Vertical" : "Horizontal"} · ${state.shot + 1} / ${set.length}`;
   [...$("dots").children].forEach((dot, i) => dot.setAttribute("aria-selected", String(i === state.shot)));
   if (manual) restartTimer();
+}
+
+// Gira la placa 90°; a mitad del giro cambia a la captura de la otra orientación.
+function setOrientation(vertical) {
+  if (state.vertical === vertical) return;
+  state.vertical = vertical;
+  $("board").classList.toggle("is-v", vertical);
+  for (const button of document.querySelectorAll(".orient button")) button.setAttribute("aria-pressed", String((button.dataset.o === "v") === vertical));
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(() => showShot(state.shot), reduced ? 0 : 420);
 }
 
 function buildDots() {
@@ -62,13 +73,25 @@ function buildDots() {
 function restartTimer() {
   clearInterval(state.timer);
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  state.timer = setInterval(() => showShot(state.shot + 1), 3600);
+  state.timer = setInterval(() => {
+    state.ticks += 1;
+    if (state.auto && state.ticks % 4 === 0) setOrientation(!state.vertical); // cada 4 paneles muestra la otra orientación
+    else showShot(state.shot + 1);
+  }, 3600);
 }
 
 function setupPreview() {
   buildDots();
   showShot(0);
   restartTimer();
+}
+
+for (const button of document.querySelectorAll(".orient button")) {
+  button.addEventListener("click", () => {
+    state.auto = false; // si el usuario elige, se deja de girar solo
+    setOrientation(button.dataset.o === "v");
+    restartTimer();
+  });
 }
 
 $("screen").addEventListener("click", (event) => {
@@ -86,8 +109,6 @@ async function loadInfo() {
     if (!response.ok) throw new Error(response.status);
     state.info = await response.json();
     $("firmwareInfo").textContent = `Firmware ${state.info.version} · compilado el ${state.info.built}.`;
-    $("build").textContent = `v${state.info.version} · ${state.info.commit}`;
-    $("build").hidden = false;
   } catch {
     $("firmwareInfo").textContent = "El firmware de esta edición todavía no está publicado. Inténtalo de nuevo en unos minutos.";
   }

@@ -19,7 +19,6 @@
     <div class="top-in">
       <span class="mark"><i aria-hidden="true"></i>CYD Monitor</span>
       <nav aria-label="Enlaces">
-        <span class="build" id="build" hidden></span>
       </nav>
     </div>
   </header>
@@ -222,15 +221,17 @@
 
     <aside class="stage" aria-label="Vista previa">
       <figure class="device" id="device">
-        <div class="board">
-          <i class="hole a"></i><i class="hole b"></i><i class="hole c"></i><i class="hole d"></i>
-          <div class="bezel">
-            <div class="screen" id="screen" title="Toca a izquierda o derecha para cambiar de panel">
-              <img alt="" id="shotA"><img alt="" id="shotB">
+        <div class="pivot">
+          <div class="board" id="board">
+            <i class="hole a"></i><i class="hole b"></i><i class="hole c"></i><i class="hole d"></i>
+            <div class="bezel">
+              <div class="screen" id="screen" title="Toca a izquierda o derecha para cambiar de panel">
+                <img alt="" id="shotA"><img alt="" id="shotB">
+              </div>
             </div>
+            <div class="usb" aria-hidden="true"></div>
+            <i class="led" aria-hidden="true"></i>
           </div>
-          <div class="usb" aria-hidden="true"></div>
-          <i class="led" aria-hidden="true"></i>
         </div>
         <figcaption>
           <strong id="shotName">RPI5</strong>
@@ -238,16 +239,16 @@
         </figcaption>
       </figure>
       <div class="dots" id="dots" role="tablist" aria-label="Paneles"></div>
-      <p class="stage-note">Capturas reales de la pantalla con datos de ejemplo. Toca a un lado para cambiar de panel.</p>
+      <div class="orient" role="group" aria-label="Orientación de la pantalla">
+        <button type="button" data-o="h" aria-pressed="true">Horizontal</button>
+        <button type="button" data-o="v" aria-pressed="false">Vertical</button>
+      </div>
+      <p class="stage-note">Capturas reales de la pantalla con datos de ejemplo. Toca a un lado para cambiar de panel. El firmware funciona en horizontal y en vertical.</p>
     </aside>
   </div>
 
   <footer class="foot">
-    <p>
-      Raspberry Pi y Proxmox son marcas de sus propietarios; sus logotipos solo identifican cada edición.
-      Tipografía Aileron, de Sora Sagano (sin derechos reservados).
-      La carga usa <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">ESP Web Tools</a>.
-    </p>
+    <p>La carga usa <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">ESP Web Tools</a>.</p>
   </footer>
 </body>
 </html>

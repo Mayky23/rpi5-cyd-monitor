@@ -3,17 +3,25 @@
 Panel táctil para **ESP32-2432S028R (Cheap Yellow Display)** que monitoriza una
 Raspberry Pi 5 y un servidor Proxmox VE desde una sola interfaz.
 
-Esta es la edición combinada del proyecto. El repositorio dispone de tres ramas:
+Esta es la edición combinada del proyecto. El repositorio dispone de estas ramas:
 
-| Rama | Paneles incluidos |
+| Rama | Contenido |
 |---|---|
-| `main` | Raspberry Pi 5 y Proxmox VE |
+| `web` | Instalador web (GitHub Pages) |
+| `rpi5-proxmox` | Edición completa: Raspberry Pi 5 y Proxmox VE |
 | `rpi5` | Solo Raspberry Pi 5 |
 | `proxmox` | Solo Proxmox VE |
 
 ![Todos los paneles de la edición combinada](docs/panels.png)
 
 *Capturas reales de la pantalla, generadas con datos de ejemplo.*
+
+## Instalación rápida desde el navegador
+
+Sin instalar nada en el PC: abre **<https://mayky23.github.io/rpi5-cyd-monitor/>**
+con Chrome, Edge u Opera, elige la edición, escribe tu Wi-Fi, la dirección de la
+API y el token, conecta la placa y pulsa *Instalar*. La propia página te da los
+comandos exactos para instalar la API en tu servidor.
 
 ## Funciones
 
@@ -24,7 +32,7 @@ Esta es la edición combinada del proyecto. El repositorio dispone de tres ramas
 - Cuatro orientaciones, brillo nocturno, diez temas y navegación táctil.
 - Cuatro animaciones de arranque genéricas y una pantalla `PERSONAL`.
 - API de solo lectura protegida con token y certificado Proxmox fijado por SHA-256.
-- Instalador de Windows que detecta la placa, instala dependencias y carga el firmware.
+- Instalador web (Chrome/Edge/Opera) o instalador de Windows que detecta la placa y carga el firmware.
 
 ## Requisitos
 
@@ -38,7 +46,7 @@ Esta es la edición combinada del proyecto. El repositorio dispone de tres ramas
 En el equipo Linux:
 
 ```bash
-git clone https://github.com/Mayky23/rpi5-cyd-monitor.git
+git clone --branch rpi5-proxmox --single-branch https://github.com/Mayky23/rpi5-cyd-monitor.git
 cd rpi5-cyd-monitor/server
 sudo ./install.sh
 ```
@@ -79,7 +87,9 @@ el panel muestra `OFFLINE` en lugar de datos que ya no son válidos.
 
 ## 2. Instalar el firmware
 
-Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
+La forma más sencilla es el [instalador web](https://mayky23.github.io/rpi5-cyd-monitor/).
+También puedes compilarlo y cargarlo con el instalador de Windows. Conecta la
+pantalla al PC y ejecuta:
 
 ```powershell
 .\Install.ps1
@@ -124,6 +134,7 @@ también excluido de Git. Selecciona `PERSONAL` desde la página Arranque del pa
 | `firmware/` | Firmware PlatformIO, fuentes, animaciones y herramientas de generación y captura. |
 | `tests/` | Pruebas de la API. |
 | `Install.ps1` | Instalador guiado para Windows. |
+| `web/` | Instalador web publicado en GitHub Pages. |
 
 ## Desarrollo y pruebas
 
@@ -149,3 +160,21 @@ python firmware/tools/build_gallery.py --capture --port COM3
 
 Después ejecuta `Remove-Item Env:PLATFORMIO_BUILD_FLAGS` y vuelve a cargar el
 firmware normal con `.\Install.ps1`.
+
+### Instalador web
+
+`web/` contiene la página y `.github/workflows/pages.yml` la publica: compila las
+tres ramas, reúne los binarios de cada edición y despliega el sitio. Para
+activarlo, en *Settings → Pages* elige *Source: GitHub Actions*. Sube antes
+`rpi5` y `proxmox` y por último `main`, o lanza el flujo a mano desde *Actions*.
+
+El firmware lee Wi-Fi, API y token de un bloque de 4 KB que la página escribe en
+la partición `spiffs` (`firmware/include/runtime_config.h`). Si no existe, usa los
+valores de `config.local.h`, así que `Install.ps1` sigue funcionando igual.
+Para probar la página en local:
+
+```powershell
+pio run -d firmware -e esp32-2432S028R
+python web/build_site.py --local-preview --out $env:TEMP\cyd-preview
+python -m http.server 8000 --directory $env:TEMP\cyd-preview
+```

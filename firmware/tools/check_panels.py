@@ -12,6 +12,26 @@ import time
 import serial
 from check_splashes import capture_command, device_info, png
 
+# Page ids of firmware/src/main.cpp (enum Page). Each edition shows a subset; the
+# capture protocol addresses pages by their position, so ids are mapped per board.
+TOTAL, OVERVIEW, STORAGE, NETWORK, CPU, PORTS, DOCKER = range(7)
+PROXMOX, PVE_PERFORMANCE, PVE_GUESTS, PVE_STORAGE, PVE_TASKS = range(7, 12)
+DIAG, BRIGHTNESS, CUSTOMIZE, SPLASH, ORIENTATION = range(12, 17)
+DATA_PAGES = tuple(range(TOTAL, DIAG))
+PAGED_LISTS = (STORAGE, NETWORK, PORTS, PVE_GUESTS, PVE_STORAGE, PVE_TASKS, CUSTOMIZE, SPLASH)
+
+
+def page_positions(info):
+    """Map page id -> position on this board (older firmware reports only the count)."""
+    ids = info.get('page_ids')
+    if ids is None:
+        if info['pages'] != 17:
+            raise RuntimeError('Firmware sin page_ids: carga el build de captura de esta versión')
+        ids = list(range(17))
+    if len(ids) != info['pages']:
+        raise RuntimeError(f'page_ids incoherente: {ids} para {info["pages"]} paneles')
+    return {page_id: position for position, page_id in enumerate(ids)}
+
 
 def fixture():
     ports = []
@@ -107,6 +127,8 @@ def main():
         else:
             raise TimeoutError('Flash capture build first')
         info = device_info(port)
+        positions = page_positions(info)
+        data_pages = [positions[page] for page in DATA_PAGES if page in positions]
         port.write(b'T\n')
         result = port.readline().decode().strip()
         assert result.startswith('TEST OK'), result
@@ -128,15 +150,17 @@ def main():
         for width in (320, 240):
             for page in range(info['pages']):
                 save(f'page-{page}', page, width=width)
-            for page in (2, 3, 5, 9, 10, 11, 14, 15):
-                save(f'page-{page}-next', page, subpage=1, width=width)
+            for page in PAGED_LISTS:
+                if page in positions:
+                    save(f'page-{positions[page]}-next', positions[page], subpage=1, width=width)
             save('navigation', 0, width=width, mode=2)
             save('offline', 0, width=width, mode=0)
             for level in range(6):
-                save(f'brightness-{level}', 13, brightness=level, width=width)
+                save(f'brightness-{level}', positions[BRIGHTNESS], brightness=level, width=width)
             for theme in range(info['themes']):
                 save(f'theme-{theme}', 0, width=width, theme=theme)
-                save(f'picker-{theme}', 14, subpage=theme // info['themes_per_page'], width=width, theme=theme)
+                save(f'picker-{theme}', positions[CUSTOMIZE], subpage=theme // info['themes_per_page'],
+                     width=width, theme=theme)
             for page in range(1, info['pages']):
                 save(f'light-{page}', page, width=width, theme=9)
             port.write(b'T\n')
@@ -149,8 +173,9 @@ def main():
             for page in range(info['pages']):
                 save(f'rotation-{rotation}-page-{page}', page, width=width, rotation=rotation)
             save(f'rotation-{rotation}-navigation', 0, width=width, rotation=rotation, mode=2)
-            for page in (14, 15):
-                save(f'rotation-{rotation}-picker-next-{page}', page, subpage=1, width=width, rotation=rotation)
+            for page in (CUSTOMIZE, SPLASH):
+                save(f'rotation-{rotation}-picker-next-{positions[page]}', positions[page], subpage=1,
+                     width=width, rotation=rotation)
             print(f'All {info["pages"]} panels captured at {rotation * 90} degrees with hardware rotation.', flush=True)
         before = fixture()
         changed = copy.deepcopy(before)
@@ -167,7 +192,7 @@ def main():
         send_json(port, before, 'U')
         send_json(port, changed)
         for width in (320, 240):
-            for page in range(12):
+            for page in data_pages:
                 full = save(f'updated-{page}', page, width=width)
                 partial = save(f'partial-{page}', page, width=width, mode=3)
                 assert full == partial, f'Incremental redraw differs on page {page}, width {width}'
@@ -182,17 +207,19 @@ def main():
         large['temperatures'][0]['current_c'] = 100.0
         send_json(port, large)
         for width in (320, 240):
-            for page in (0, 1, 2, 3, 4):
-                save(f'wide-values-{page}', page, width=width)
+            for page in (TOTAL, OVERVIEW, STORAGE, NETWORK, CPU, PROXMOX, PVE_PERFORMANCE):
+                if page in positions:
+                    save(f'wide-values-{positions[page]}', positions[page], width=width)
         # Overflow remains reachable instead of silently dropping rows.
         data = fixture()
         data['docker']['containers'] += [dict(name=f'backup-{i}', state='paused') for i in range(7)]
         data['docker']['total'] = 12
         send_json(port, data)
-        frames = []
-        for width in (320, 240):
-            frames = [save(f'docker-overflow-{subpage}', 6, subpage=subpage, width=width) for subpage in (0, 1)]
-            assert frames[0] != frames[1], 'Docker pagination did not change the display'
+        if DOCKER in positions:
+            for width in (320, 240):
+                frames = [save(f'docker-overflow-{subpage}', positions[DOCKER], subpage=subpage, width=width)
+                          for subpage in (0, 1)]
+                assert frames[0] != frames[1], 'Docker pagination did not change the display'
         data['cpu']['percent'] = None
         data['cpu']['temperature_c'] = None
         data['memory']['percent'] = None
@@ -205,7 +232,7 @@ def main():
         data['history'] = []
         send_json(port, data)
         for width in (320, 240):
-            for page in range(12):
+            for page in data_pages:
                 save(f'error-{page}', page, width=width)
         print(f'{count} panel captures OK; overflow pages and missing-data states verified.', flush=True)
 

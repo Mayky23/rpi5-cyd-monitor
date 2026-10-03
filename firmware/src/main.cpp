@@ -8,18 +8,18 @@
 #include <Preferences.h>
 #include <SPI.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <XPT2046_Touchscreen.h>
 #include <esp_system.h>
+#include <memory>
 #include "config.h"
 #include "runtime_config.h"
 #include "splash_scenes.h"
 #include "panel_data.h"
 #include "ui_type.h"
+#include "version.h"
 
 // Valores seguros para actualizar solo main.cpp sin tocar las credenciales existentes.
-#ifndef PANEL_TITLE
-#define PANEL_TITLE "RPI5"
-#endif
 #ifndef DISPLAY_INVERT_COLORS
 #define DISPLAY_INVERT_COLORS 1
 #endif
@@ -61,6 +61,7 @@ Arduino_GFX *gfx = new Arduino_ILI9341(bus, GFX_NOT_DEFINED, DISPLAY_ROTATION, D
 SPIClass touchSpi(VSPI);
 XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
 JsonDocument snapshot;
+JsonDocument snapshotFilter;
 Preferences preferences;
 static RuntimeConfig::Values netConfig;
 
@@ -527,7 +528,13 @@ static uint32_t storageSignature() { return jsonSignature(snapshot["storage"]) ^
 static uint32_t interfaceSignature() { return jsonSignature(snapshot["interfaces"]) ^ collectionFailed("interfaces"); }
 static uint32_t portSignature() { return jsonSignature(snapshot["ports"]) ^ collectionFailed("ports"); }
 static uint32_t dockerSignature() { return jsonSignature(snapshot["docker"]); }
-static uint32_t proxmoxSignature() { return jsonSignature(snapshot["proxmox"]); }
+// Each Proxmox list only redraws when its own rows or the connection state change,
+// not every time the node CPU/RAM history moves.
+static uint32_t proxmoxSignature(const char *field) {
+  const uint32_t state = fnv1aAdd(jsonSignature(snapshot["proxmox"][field]), snapshot["proxmox"]["state"] | "");
+  const bool available = snapshot["proxmox"]["available"] | false;
+  return state ^ (available ? 1u : 0u);
+}
 
 static Rect kpiRect(uint8_t index, uint8_t columns, int16_t y, int16_t h) {
   const int16_t totalGap = GAP * (columns - 1);
@@ -1039,12 +1046,37 @@ static bool proxmoxAvailable() {
   return snapshot["proxmox"]["available"] | false;
 }
 
+enum class PveState : uint8_t { Online, Offline, Unconfigured, Error };
+
+static PveState proxmoxState() {
+  if (proxmoxAvailable()) return PveState::Online;
+  const String state = snapshot["proxmox"]["state"] | "";
+  if (state == "offline") return PveState::Offline;
+  if (state == "unconfigured") return PveState::Unconfigured;
+  return PveState::Error;
+}
+
+// Offline or not configured are expected situations: show "--" in amber, not a red error.
 static bool proxmoxOffline() {
-  return String(snapshot["proxmox"]["state"] | "") == "offline";
+  const PveState state = proxmoxState();
+  return state == PveState::Offline || state == PveState::Unconfigured;
+}
+
+static String proxmoxApiText() {
+  switch (proxmoxState()) {
+    case PveState::Online: return "OK";
+    case PveState::Offline: return "OFFLINE";
+    case PveState::Unconfigured: return "SIN CONFIG";
+    default: return "ERROR";
+  }
 }
 
 static String proxmoxUnavailableText() {
-  return proxmoxOffline() ? "PROXMOX OFFLINE" : "ERROR DE PROXMOX";
+  switch (proxmoxState()) {
+    case PveState::Offline: return "PROXMOX OFFLINE";
+    case PveState::Unconfigured: return "PROXMOX SIN CONFIGURAR";
+    default: return "ERROR DE PROXMOX";
+  }
 }
 
 static JsonObject proxmoxNode() {
@@ -1068,7 +1100,7 @@ static void drawProxmox(bool full) {
     cpuValid ? numberText(node["cpu_percent"], 0, "%") : offline ? "--" : "ERROR",
     ramValid ? numberText(node["memory_percent"], 0, "%") : offline ? "--" : "ERROR",
     onlineNode ? uptimeText(node["uptime_s"] | 0ULL) : offline ? "--" : "ERROR",
-    available ? "OK" : offline ? "OFFLINE" : "ERROR"
+    proxmoxApiText()
   };
   const uint16_t unavailableColor = offline ? C::WARN : C::BAD;
   const uint16_t colors[] = {cpuValid ? healthColor(cpu, 70, 90) : unavailableColor,
@@ -1101,7 +1133,9 @@ static void drawPvePerformance(bool full) {
     const Rect body{static_cast<int16_t>(chart.x + 4), static_cast<int16_t>(chart.y + 24),
                     static_cast<int16_t>(chart.w - 8), static_cast<int16_t>(chart.h - 28)};
     gfx->fillRect(body.x, body.y, body.w, body.h, C::CARD);
-    textBox(body, "PROXMOX OFFLINE", C::WARN, 2, Align::Center, C::CARD);
+    const String message = proxmoxUnavailableText();
+    textBox(body, message, C::WARN, Typography::fitSize(message, body.w - 8, body.h, Typography::Heading),
+            Align::Center, C::CARD);
   } else {
     drawHistoryChart(chart, snapshot["proxmox"]["history"].as<JsonArray>(),
                      snapshot["proxmox"]["history_interval_ms"] | 8000u, full);
@@ -1113,8 +1147,7 @@ static void drawPveGuests(bool full) {
   const bool offline = proxmoxOffline();
   const uint16_t unavailableColor = offline ? C::WARN : C::BAD;
   const int16_t h = 48;
-  drawStatCard(kpiRect(0, 3, CONTENT_TOP, h), "API",
-               available ? "OK" : offline ? "OFFLINE" : "ERROR",
+  drawStatCard(kpiRect(0, 3, CONTENT_TOP, h), "API", proxmoxApiText(),
                available ? C::OK : unavailableColor, full);
   drawStatCard(kpiRect(1, 3, CONTENT_TOP, h), "ACTIVOS",
                available ? numberText(snapshot["proxmox"]["guests_running"]) : offline ? "--" : "ERROR",
@@ -1126,7 +1159,7 @@ static void drawPveGuests(bool full) {
                   static_cast<int16_t>(SCREEN_W - MARGIN * 2),
                   static_cast<int16_t>(CONTENT_H - h - GAP)};
   if (full) cardFrame(card, "MAQUINAS", C::OK);
-  const uint32_t signature = proxmoxSignature();
+  const uint32_t signature = proxmoxSignature("guests");
   if (!full && signature == listSignatures[PAGE_PVE_GUESTS]) return;
   listSignatures[PAGE_PVE_GUESTS] = signature;
   const Rect body{static_cast<int16_t>(card.x + 4), static_cast<int16_t>(card.y + 24),
@@ -1164,7 +1197,7 @@ static void drawPveStorage(bool full) {
   const bool available = proxmoxAvailable();
   const Rect card{MARGIN, CONTENT_TOP, static_cast<int16_t>(SCREEN_W - MARGIN * 2), CONTENT_H};
   if (full) cardFrame(card, "ALMACENAMIENTO PROXMOX", C::WARN);
-  const uint32_t signature = proxmoxSignature();
+  const uint32_t signature = proxmoxSignature("storage");
   if (!full && signature == listSignatures[PAGE_PVE_STORAGE]) return;
   listSignatures[PAGE_PVE_STORAGE] = signature;
   const Rect body{static_cast<int16_t>(card.x + 4), static_cast<int16_t>(card.y + 24),
@@ -1207,7 +1240,7 @@ static void drawPveTasks(bool full) {
   const bool available = proxmoxAvailable();
   const Rect card{MARGIN, CONTENT_TOP, static_cast<int16_t>(SCREEN_W - MARGIN * 2), CONTENT_H};
   if (full) cardFrame(card, "ACTIVIDAD PROXMOX", C::VALUE);
-  const uint32_t signature = proxmoxSignature();
+  const uint32_t signature = proxmoxSignature("tasks");
   if (!full && signature == listSignatures[PAGE_PVE_TASKS]) return;
   listSignatures[PAGE_PVE_TASKS] = signature;
   const Rect body{static_cast<int16_t>(card.x + 4), static_cast<int16_t>(card.y + 24),
@@ -1762,11 +1795,51 @@ static bool requestSnapshot(ApiResponse &response) {
     response.error = "WiFi sin conexion";
     return false;
   }
-  HTTPClient http;
   const uint16_t timeout = bootstrapping ? 7000 : HTTP_TIMEOUT_MS;
+  const String url = netConfig.apiBase + "/api/v2/snapshot";
+  // Declared before HTTPClient so the transport outlives it.
+  std::unique_ptr<WiFiClient> transport;
+  if (url.startsWith("https://")) {
+    auto *tls = new (std::nothrow) WiFiClientSecure();
+    if (!tls) {
+      response.error = "Memoria insuficiente";
+      return false;
+    }
+    transport.reset(tls);
+    tls->setInsecure();
+    tls->setHandshakeTimeout((timeout + 999) / 1000);
+    if (netConfig.certSha256.length()) {
+      // Connect first and compare the certificate before the token is sent;
+      // HTTPClient then reuses this already verified connection.
+      String host;
+      uint16_t port = 443;
+      if (!Panel::httpsEndpoint(netConfig.apiBase, host, port)) {
+        response.error = "URL API invalida";
+        return false;
+      }
+      if (!tls->connect(host.c_str(), port, timeout)) {
+        response.httpCode = HTTPC_ERROR_CONNECTION_REFUSED;
+        response.error = "Servidor no accesible";
+        return false;
+      }
+      if (!tls->verify(netConfig.certSha256.c_str(), nullptr)) {
+        tls->stop();
+        response.error = "Certificado API no coincide";
+        return false;
+      }
+    }
+  } else {
+    transport.reset(new (std::nothrow) WiFiClient());
+    if (!transport) {
+      response.error = "Memoria insuficiente";
+      return false;
+    }
+  }
+  HTTPClient http;
+  http.setReuse(false);
   http.setConnectTimeout(timeout);
   http.setTimeout(timeout);
-  if (!http.begin(netConfig.apiBase + "/api/v2/snapshot")) {
+  if (!http.begin(*transport, url)) {
     response.error = "URL API invalida";
     return false;
   }
@@ -1778,7 +1851,8 @@ static bool requestSnapshot(ApiResponse &response) {
     http.end();
     return false;
   }
-  const DeserializationError error = deserializeJson(response.data, http.getStream());
+  const DeserializationError error = deserializeJson(response.data, http.getStream(),
+                                                     DeserializationOption::Filter(snapshotFilter));
   http.end();
   if (error) {
     response.error = "JSON " + String(error.c_str());
@@ -1816,7 +1890,7 @@ static void acceptResponse(ApiResponse &response, bool render) {
     bool partial = false;
     String partialSection;
     for (JsonPair section : response.data["collection_status"].as<JsonObject>()) {
-      if (section.value()["ok"] == false) {
+      if (Panel::sectionShown(MONITOR_PROFILE, section.key().c_str()) && section.value()["ok"] == false) {
         partial = true;
         partialSection = section.key().c_str();
         break;
@@ -2274,8 +2348,10 @@ static void captureSplashFrame() {
   if (!Serial.available()) return;
   const String command = Serial.readStringUntil('\n');
   if (command == "I") {
-    Serial.printf("{\"pages\":%u,\"themes\":%u,\"splashes\":%u,\"themes_per_page\":%u,\"splashes_per_page\":%u}\n",
-                  PAGE_COUNT, THEME_COUNT, SPLASH_COUNT, THEMES_PER_PAGE, SPLASHES_PER_PAGE);
+    String ids;
+    for (uint8_t i = 0; i < PAGE_COUNT; ++i) ids += (i ? "," : "") + String(VISIBLE_PAGES[i]);
+    Serial.printf("{\"pages\":%u,\"page_ids\":[%s],\"themes\":%u,\"splashes\":%u,\"themes_per_page\":%u,\"splashes_per_page\":%u}\n",
+                  PAGE_COUNT, ids.c_str(), THEME_COUNT, SPLASH_COUNT, THEMES_PER_PAGE, SPLASHES_PER_PAGE);
     return;
   }
   if (command == "T") { checkPanelLogic(); return; }
@@ -2379,15 +2455,18 @@ static void displayTestLoop() {
 void setup() {
   Serial.begin(SPLASH_CAPTURE_ENABLED ? 460800 : 115200);
   netConfig = RuntimeConfig::load();
+  Panel::buildSnapshotFilter(snapshotFilter);
   Serial.printf("Configuracion de red: %s\n", netConfig.fromFlash ? "instalador web" : "compilada");
+  if (netConfig.apiBase.startsWith("https://") && !netConfig.certSha256.length())
+    Serial.println("Aviso: API https sin huella SHA-256; el certificado no se comprueba");
 
   pinMode(TFT_BL, OUTPUT);
   ledcSetup(0, 5000, 8);
   ledcAttachPin(TFT_BL, 0);
   loadTheme();
   setDisplayGeometry(preferences.getUChar("rotation", DISPLAY_ROTATION));
-  Serial.printf("PI OPS v8.1 %dx%d rotation=%d invert=%d test=%d\n", SCREEN_W, SCREEN_H,
-                displayRotation, DISPLAY_INVERT_COLORS, DISPLAY_TEST_ONLY);
+  Serial.printf("CYD Monitor %s perfil=%d %dx%d rotation=%d invert=%d test=%d\n", FIRMWARE_VERSION,
+                MONITOR_PROFILE, SCREEN_W, SCREEN_H, displayRotation, DISPLAY_INVERT_COLORS, DISPLAY_TEST_ONLY);
   loadBrightness();
   Serial.printf("Ajustes: brillo PWM=%u/255; pantalla=%s\n",
                 BRIGHTNESS_LEVELS[brightnessLevel], SPLASH_NAMES[splashIndex]);

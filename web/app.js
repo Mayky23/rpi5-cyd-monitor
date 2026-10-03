@@ -1,9 +1,11 @@
-import { EDITIONS, buildCommands, buildConfigBlock, buildManifest, randomToken, validate } from "./lib.js";
+import { EDITIONS, apiBase, buildCommands, buildConfigBlock, buildManifest, normalizeFingerprint, randomToken, validate } from "./lib.js";
 
 const $ = (id) => document.getElementById(id);
-const fields = ["ssid", "wifiPass", "api", "token", "deviceName", "pveUrl", "pveId", "pveSecret", "pveCert"];
-const remembered = ["ssid", "api", "deviceName", "pveUrl", "pveId"]; // nunca contraseñas, tokens ni secretos
-const labels = { ssid: "tu Wi-Fi", wifiPass: "la contraseña", api: "la dirección de la API", token: "el token", deviceName: "el nombre de la pantalla" };
+const fields = ["ssid", "wifiPass", "api", "apiPin", "token", "deviceName", "pveUrl", "pveId", "pveSecret", "pveCert"];
+const remembered = ["ssid", "api", "apiPin", "deviceName", "pveUrl", "pveId"]; // nunca contraseñas, tokens ni secretos
+const untrimmed = new Set(["ssid", "wifiPass"]); // un espacio al principio o al final puede ser real
+const checked = ["ssid", "wifiPass", "api", "apiPin", "token", "deviceName"];
+const labels = { ssid: "tu Wi-Fi", wifiPass: "la contraseña", api: "la dirección de la API", apiPin: "la huella del certificado", token: "el token", deviceName: "el nombre de la pantalla" };
 
 // Capturas reales de la pantalla (las que pinta el propio firmware) para la vista previa.
 const SCREENS = {
@@ -16,7 +18,7 @@ const EDITION_NAMES = { combined: "Raspberry Pi 5 y Proxmox", rpi5: "Raspberry P
 const state = { info: null, blobs: [], touched: new Set(), shot: 0, timer: null, front: "shotA", vertical: false, auto: true, ticks: 0 };
 
 const edition = () => document.querySelector("input[name=edition]:checked").value;
-const values = () => Object.fromEntries(fields.map((id) => [id, id === "wifiPass" ? $(id).value : $(id).value.trim()]));
+const values = () => Object.fromEntries(fields.map((id) => [id, untrimmed.has(id) ? $(id).value : $(id).value.trim()]));
 
 function store(action, key, value) {
   try {
@@ -102,16 +104,22 @@ $("screen").addEventListener("click", (event) => {
 /* ---------- Firmware publicado ---------- */
 
 async function loadInfo() {
+  const requested = edition();
   state.info = null;
   $("firmwareInfo").textContent = "Buscando el firmware…";
+  update();
+  let info = null;
   try {
-    const response = await fetch(`firmware/${edition()}/info.json`, { cache: "no-cache" });
+    const response = await fetch(`firmware/${requested}/info.json`, { cache: "no-cache" });
     if (!response.ok) throw new Error(response.status);
-    state.info = await response.json();
-    $("firmwareInfo").textContent = `Firmware ${state.info.version} · compilado el ${state.info.built}.`;
-  } catch {
-    $("firmwareInfo").textContent = "El firmware de esta edición todavía no está publicado. Inténtalo de nuevo en unos minutos.";
-  }
+    info = await response.json();
+  } catch { /* se informa abajo */ }
+  // Si mientras tanto se eligió otra edición, esta respuesta ya no vale.
+  if (requested !== edition()) return;
+  state.info = info;
+  $("firmwareInfo").textContent = info
+    ? `Firmware ${info.version} · compilado el ${info.built}.`
+    : "El firmware de esta edición todavía no está publicado. Inténtalo de nuevo en unos minutos.";
   update();
 }
 
@@ -133,7 +141,8 @@ function renderSummary(current, kind, url) {
     ["Firmware", state.info ? `${state.info.version} (${state.info.commit})` : "—"],
     ["Wi-Fi", current.ssid || "—"],
     ["Contraseña", current.wifiPass ? mask(current.wifiPass) : "sin contraseña"],
-    ["API", url ? url.origin : "—", "mono"],
+    ["API", url ? apiBase(url) : "—", "mono"],
+    ...(url?.protocol === "https:" ? [["Certificado", normalizeFingerprint(current.apiPin) ? `${normalizeFingerprint(current.apiPin).slice(0, 12)}… (comprobado)` : "sin comprobar"]] : []),
     ["Token", current.token ? `${current.token.slice(0, 4)}${mask(current.token.slice(4))}` : "—", "mono"],
     ["Nombre", current.deviceName || "—"],
   ];
@@ -148,12 +157,16 @@ function renderSummary(current, kind, url) {
 function update() {
   const current = values();
   const kind = edition();
-  const { errors, url } = validate(current);
+  const { errors, warnings, url } = validate(current);
+  const https = url?.protocol === "https:";
+  $("apiPinField").hidden = !https;
 
-  for (const id of ["ssid", "wifiPass", "api", "token", "deviceName"]) {
+  for (const id of checked) {
     const show = state.touched.has(id) && errors[id];
+    const warn = !errors[id] && warnings[id];
     $(id).classList.toggle("invalid", Boolean(show));
-    $(`err-${id}`).textContent = show ? errors[id] : "";
+    $(`err-${id}`).classList.toggle("warn", Boolean(warn));
+    $(`err-${id}`).textContent = show ? errors[id] : warn || "";
   }
 
   $("proxmoxGroup").hidden = !EDITIONS[kind].proxmox;
@@ -178,7 +191,7 @@ function update() {
       $(holder).removeAttribute("manifest");
       continue;
     }
-    const block = buildConfigBlock({ ...current, api: url.origin + url.pathname });
+    const block = buildConfigBlock({ ...current, api: apiBase(url), apiPin: https ? current.apiPin : "" });
     const manifest = buildManifest({
       baseUrl: new URL(`firmware/${kind}/`, location.href),
       version: state.info.version,

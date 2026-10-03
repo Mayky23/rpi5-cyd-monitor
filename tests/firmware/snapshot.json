@@ -1,0 +1,667 @@
+{
+ "collection_status": {
+  "block_devices": {
+   "age_s": 0,
+   "ok": true,
+   "stale": false
+  },
+  "docker": {
+   "age_s": 0,
+   "ok": true,
+   "stale": false
+  },
+  "interfaces": {
+   "age_s": 0,
+   "ok": true,
+   "stale": false
+  },
+  "ports": {
+   "age_s": 0,
+   "ok": true,
+   "stale": false
+  },
+  "proxmox": {
+   "age_s": 0,
+   "ok": true,
+   "stale": false
+  },
+  "temperatures": {
+   "age_s": 0,
+   "ok": true,
+   "stale": false
+  }
+ },
+ "cpu": {
+  "frequency_mhz": 2400,
+  "load": [
+   0.75,
+   0.6,
+   0.5
+  ],
+  "per_core": [
+   12.0,
+   7.5,
+   33.1,
+   10.0
+  ],
+  "percent": 13.2,
+  "temperature_c": 57.3
+ },
+ "disk": {
+  "error": null,
+  "free_bytes": 580000000000,
+  "io_error": null,
+  "io_status": "ok",
+  "percent": 42.0,
+  "read_bps": 12500000,
+  "status": "ok",
+  "total_bytes": 1000000000000,
+  "used_bytes": 420000000000,
+  "write_bps": 834000
+ },
+ "docker": {
+  "available": true,
+  "containers": [
+   {
+    "image": "ghcr.io/example/image:latest",
+    "name": "service-0",
+    "ports": "0.0.0.0:8080->80/tcp, [::]:8080->80/tcp",
+    "state": "running",
+    "status": "Up 3 days (healthy)"
+   },
+   {
+    "image": "ghcr.io/example/image:latest",
+    "name": "service-1",
+    "ports": "0.0.0.0:8080->80/tcp, [::]:8080->80/tcp",
+    "state": "running",
+    "status": "Up 3 days (healthy)"
+   },
+   {
+    "image": "ghcr.io/example/image:latest",
+    "name": "service-2",
+    "ports": "0.0.0.0:8080->80/tcp, [::]:8080->80/tcp",
+    "state": "exited",
+    "status": "Up 3 days (healthy)"
+   }
+  ],
+  "running": 2,
+  "total": 3
+ },
+ "history": [
+  {
+   "cpu": 8.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000000
+  },
+  {
+   "cpu": 9.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000005
+  },
+  {
+   "cpu": 10.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000010
+  },
+  {
+   "cpu": 11.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000015
+  },
+  {
+   "cpu": 12.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000020
+  },
+  {
+   "cpu": 13.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000025
+  },
+  {
+   "cpu": 14.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000030
+  },
+  {
+   "cpu": 15.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000035
+  },
+  {
+   "cpu": 16.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000040
+  },
+  {
+   "cpu": 17.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000045
+  },
+  {
+   "cpu": 18.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000050
+  },
+  {
+   "cpu": 8.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000055
+  },
+  {
+   "cpu": 9.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000060
+  },
+  {
+   "cpu": 10.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000065
+  },
+  {
+   "cpu": 11.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000070
+  },
+  {
+   "cpu": 12.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000075
+  },
+  {
+   "cpu": 13.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000080
+  },
+  {
+   "cpu": 14.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000085
+  },
+  {
+   "cpu": 15.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000090
+  },
+  {
+   "cpu": 16.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000095
+  },
+  {
+   "cpu": 17.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000100
+  },
+  {
+   "cpu": 18.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000105
+  },
+  {
+   "cpu": 8.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000110
+  },
+  {
+   "cpu": 9.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000115
+  },
+  {
+   "cpu": 10.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000120
+  },
+  {
+   "cpu": 11.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000125
+  },
+  {
+   "cpu": 12.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000130
+  },
+  {
+   "cpu": 13.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000135
+  },
+  {
+   "cpu": 14.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000140
+  },
+  {
+   "cpu": 15.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000145
+  },
+  {
+   "cpu": 16.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000150
+  },
+  {
+   "cpu": 17.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000155
+  },
+  {
+   "cpu": 18.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000160
+  },
+  {
+   "cpu": 8.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000165
+  },
+  {
+   "cpu": 9.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000170
+  },
+  {
+   "cpu": 10.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000175
+  },
+  {
+   "cpu": 11.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000180
+  },
+  {
+   "cpu": 12.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000185
+  },
+  {
+   "cpu": 13.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000190
+  },
+  {
+   "cpu": 14.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000195
+  },
+  {
+   "cpu": 15.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000200
+  },
+  {
+   "cpu": 16.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000205
+  },
+  {
+   "cpu": 17.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000210
+  },
+  {
+   "cpu": 18.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000215
+  },
+  {
+   "cpu": 8.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000220
+  },
+  {
+   "cpu": 9.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000225
+  },
+  {
+   "cpu": 10.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000230
+  },
+  {
+   "cpu": 11.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000235
+  },
+  {
+   "cpu": 12.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000240
+  },
+  {
+   "cpu": 13.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000245
+  },
+  {
+   "cpu": 14.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000250
+  },
+  {
+   "cpu": 15.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000255
+  },
+  {
+   "cpu": 16.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000260
+  },
+  {
+   "cpu": 17.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000265
+  },
+  {
+   "cpu": 18.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000270
+  },
+  {
+   "cpu": 8.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000275
+  },
+  {
+   "cpu": 9.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000280
+  },
+  {
+   "cpu": 10.0,
+   "ram": 32.0,
+   "temp": 50.0,
+   "time": 1790000285
+  },
+  {
+   "cpu": 11.0,
+   "ram": 33.0,
+   "temp": 50.0,
+   "time": 1790000290
+  },
+  {
+   "cpu": 12.0,
+   "ram": 34.0,
+   "temp": 50.0,
+   "time": 1790000295
+  }
+ ],
+ "history_interval_ms": 5000,
+ "interfaces": [
+  {
+   "ipv4": "192.0.2.10",
+   "name": "eth0",
+   "rx_total_bytes": 1,
+   "speed_mbps": 1000,
+   "tx_total_bytes": 2,
+   "up": true
+  },
+  {
+   "ipv4": "172.20.0.1",
+   "name": "br-1a947a33ee86",
+   "rx_total_bytes": 1,
+   "speed_mbps": 10000,
+   "tx_total_bytes": 2,
+   "up": true
+  }
+ ],
+ "memory": {
+  "available_bytes": 5500000000,
+  "percent": 34.1,
+  "swap_percent": 0.0,
+  "swap_total_bytes": 536870912,
+  "swap_used_bytes": 0,
+  "total_bytes": 8400000000,
+  "used_bytes": 2900000000
+ },
+ "network": {
+  "rx_bps": 12345678,
+  "rx_total_bytes": 10,
+  "tx_bps": 987654,
+  "tx_total_bytes": 20
+ },
+ "ports": [
+  {
+   "address": "0.0.0.0",
+   "pid": 812,
+   "port": 22,
+   "protocol": "tcp",
+   "service": "sshd"
+  },
+  {
+   "address": "::",
+   "pid": 812,
+   "port": 22,
+   "protocol": "tcp6",
+   "service": "sshd"
+  }
+ ],
+ "proxmox": {
+  "available": true,
+  "guests": [
+   {
+    "cpu_percent": 12.0,
+    "cpu_total": 2,
+    "disk_percent": 31.0,
+    "disk_total_bytes": 100,
+    "disk_used_bytes": 31,
+    "id": 100,
+    "memory_percent": 37.5,
+    "memory_total_bytes": 8,
+    "memory_used_bytes": 3,
+    "name": "firewall",
+    "net_in_bytes": 1,
+    "net_out_bytes": 2,
+    "node": "proxmox",
+    "status": "running",
+    "type": "VM",
+    "uptime_s": 600
+   },
+   {
+    "cpu_percent": 0.0,
+    "cpu_total": 1,
+    "disk_percent": null,
+    "disk_total_bytes": null,
+    "disk_used_bytes": null,
+    "id": 101,
+    "memory_percent": null,
+    "memory_total_bytes": null,
+    "memory_used_bytes": null,
+    "name": "dns",
+    "net_in_bytes": null,
+    "net_out_bytes": null,
+    "node": "proxmox",
+    "status": "stopped",
+    "type": "LXC",
+    "uptime_s": 0
+   }
+  ],
+  "guests_running": 1,
+  "guests_total": 2,
+  "history": [
+   {
+    "cpu": 18.5,
+    "ram": 40.6,
+    "time": 1790000300
+   }
+  ],
+  "history_interval_ms": 8000,
+  "nodes": [
+   {
+    "cpu_percent": 18.5,
+    "cpu_total": 8,
+    "memory_percent": 40.6,
+    "memory_total_bytes": 32000000000,
+    "memory_used_bytes": 13000000000,
+    "name": "proxmox",
+    "status": "online",
+    "uptime_s": 864000
+   }
+  ],
+  "nodes_online": 1,
+  "nodes_total": 1,
+  "state": "online",
+  "storage": [
+   {
+    "name": "local-lvm",
+    "node": "proxmox",
+    "percent": 61.0,
+    "shared": false,
+    "status": "available",
+    "total_bytes": 100,
+    "used_bytes": 61
+   }
+  ],
+  "tasks": [
+   {
+    "detail": "Consola cerrada por el usuario",
+    "id": "",
+    "label": "Consola del nodo",
+    "node": "proxmox",
+    "start_time": 1789990000,
+    "started": "21/09 12:00",
+    "state": "CANCELLED",
+    "status": "command failed: received interrupt",
+    "type": "vncshell",
+    "user": "root@pam"
+   },
+   {
+    "detail": "Completada correctamente",
+    "id": "100",
+    "label": "Copia de seguridad",
+    "node": "proxmox",
+    "start_time": 1790000000,
+    "started": "21/09 12:00",
+    "state": "OK",
+    "status": "OK",
+    "type": "vzdump",
+    "user": "root@pam"
+   }
+  ],
+  "tasks_cancelled": 1,
+  "tasks_failed": 0,
+  "version": "9.2.11"
+ },
+ "sample_interval_ms": 2500,
+ "schema": 2,
+ "sequence": 1,
+ "server_time": 1790000300,
+ "storage": {
+  "mounts": [
+   {
+    "device": "nvme0n1",
+    "error": null,
+    "free_bytes": 580000000000,
+    "fstype": "ext4, vfat",
+    "label": "Samsung SSD",
+    "model": "Samsung SSD 980",
+    "mount": "/, /boot/firmware",
+    "mounts": [
+     "/",
+     "/boot/firmware"
+    ],
+    "percent": 42.0,
+    "removable": false,
+    "size_bytes": 1000204886016,
+    "status": "ok",
+    "total_bytes": 1000000000000,
+    "transport": "nvme",
+    "used_bytes": 420000000000
+   },
+   {
+    "device": "sda",
+    "error": null,
+    "free_bytes": null,
+    "fstype": null,
+    "label": "sda",
+    "model": null,
+    "mount": null,
+    "mounts": [],
+    "percent": null,
+    "removable": true,
+    "size_bytes": 64000000000,
+    "status": "unmounted",
+    "total_bytes": null,
+    "transport": "usb",
+    "used_bytes": null
+   }
+  ]
+ },
+ "system": {
+  "agent_uptime_s": 3600,
+  "hostname": "raspberrypi",
+  "ip": "192.0.2.10",
+  "uptime_s": 936520
+ },
+ "temperatures": [
+  {
+   "critical_c": 110.0,
+   "current_c": 57.3,
+   "high_c": null,
+   "name": "cpu_thermal:sensor 1"
+  }
+ ]
+}

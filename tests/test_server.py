@@ -1,10 +1,17 @@
 """Focused regressions for authentication, stale data and collection completeness."""
 
+import hashlib
+import http.server
 import json
 import os
+import ssl
 import subprocess
 import sys
+import tempfile
+import threading
+import time
 import unittest
+from collections import namedtuple
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -106,6 +113,11 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(monitor.named_interfaces(original)[0]["display_name"], "Docker / jellyfin")
         self.assertNotIn("display_name", original[0])
 
+    def test_non_ascii_token_is_rejected_without_server_error(self):
+        client = TestClient(monitor.app, raise_server_exceptions=False)
+        response = client.get("/health", headers={"X-API-Key": "ñandú-token".encode("latin-1")})
+        self.assertEqual(response.status_code, 401)
+
     def test_proxmox_stats_normalizes_nodes_guests_and_storage(self):
         responses = [
             {"version": "9.2.11"},
@@ -124,7 +136,7 @@ class ServerTests(unittest.TestCase):
               "user": "root@pam", "starttime": 123}],
         ]
         with patch.object(monitor, "proxmox_configured", return_value=True), \
-             patch.object(monitor, "proxmox_request", side_effect=responses):
+             patch.object(monitor, "proxmox_fetch", return_value=responses):
             result = monitor.proxmox_stats()
         self.assertTrue(result["available"])
         self.assertEqual(result["version"], "9.2.11")
@@ -162,7 +174,7 @@ class ServerTests(unittest.TestCase):
     def test_proxmox_offline_discards_stale_metrics_without_failing_collector(self):
         monitor._proxmox_history.append({"cpu": 90.0, "ram": 80.0, "time": 1})
         with patch.object(monitor, "proxmox_configured", return_value=True), \
-             patch.object(monitor, "proxmox_request",
+             patch.object(monitor, "proxmox_fetch",
                           side_effect=monitor.ProxmoxOfflineError("sin conexion")):
             result = monitor.proxmox_stats()
         self.assertFalse(result["available"])
@@ -170,6 +182,77 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(result["nodes"], [])
         self.assertEqual(result["history"], [])
         self.assertEqual(list(monitor._proxmox_history), [])
+
+    def test_proxmox_tasks_are_the_most_recent_and_bad_payloads_fail(self):
+        tasks = [{"type": "qmstart", "status": "OK", "starttime": start} for start in range(30)]
+        with patch.object(monitor, "proxmox_configured", return_value=True), \
+             patch.object(monitor, "proxmox_fetch", return_value=[{"version": "9"}, [], tasks]):
+            result = monitor.proxmox_stats()
+        self.assertEqual(len(result["tasks"]), 20)
+        self.assertEqual(result["tasks"][0]["start_time"], 29)
+        with patch.object(monitor, "proxmox_configured", return_value=True), \
+             patch.object(monitor, "proxmox_fetch", return_value=[None, {}, []]):
+            with self.assertRaisesRegex(RuntimeError, "inesperada"):
+                monitor.proxmox_stats()
+
+    def test_history_interval_reports_the_real_sample_spacing(self):
+        history = [{"cpu": 1, "ram": 1, "time": 1000 + i * 10} for i in range(6)]
+        self.assertEqual(monitor._history_interval_ms(history, 8000), 10000)
+        self.assertEqual(monitor._history_interval_ms(history[:1], 8000), 8000)
+
+    def test_cpu_percent_uses_one_baseline_for_every_request_thread(self):
+        Times = namedtuple("Times", "user nice system idle iowait")
+        samples = iter([Times(10, 0, 0, 90, 0), Times(60, 0, 0, 140, 0),
+                        Times(60, 0, 0, 240, 0), Times(60, 0, 0, 340, 0)])
+
+        def cpu_times(percpu=False):
+            value = next(samples) if not percpu else None
+            return value if not percpu else [Times(0, 0, 0, 1, 0)]
+
+        results = []
+        with patch.object(monitor.psutil, "cpu_times", side_effect=cpu_times):
+            monitor._last_cpu_times = Times(0, 0, 0, 0, 0)
+            for _ in range(3):
+                worker = threading.Thread(target=lambda: results.append(monitor.sample_realtime()["cpu"]["percent"]))
+                worker.start()
+                worker.join()
+        # 10/100 busy, then 50/100, then 0/100: each new thread continues the shared baseline.
+        self.assertEqual(results, [10.0, 50.0, 0.0])
+
+    def test_slow_collector_does_not_block_other_collectors(self):
+        started, release = threading.Event(), threading.Event()
+
+        def slow():
+            started.set()
+            release.wait(2)
+            return "slow"
+
+        worker = threading.Thread(target=monitor.cached, args=("proxmox", 8, slow))
+        worker.start()
+        started.wait(2)
+        begin = time.monotonic()
+        self.assertEqual(monitor.cached("ports", 8, lambda: [22]), [22])
+        self.assertLess(time.monotonic() - begin, 0.5)
+        release.set()
+        worker.join()
+
+    def test_snapshot_collects_in_parallel(self):
+        def slow(value):
+            def loader():
+                time.sleep(0.4)
+                return value
+            return loader
+        with patch.object(monitor, "sample_realtime", return_value={}), \
+             patch.object(monitor, "block_devices", side_effect=slow([])), \
+             patch.object(monitor, "network_interfaces", side_effect=slow([])), \
+             patch.object(monitor, "all_temperatures", side_effect=slow([])), \
+             patch.object(monitor, "listening_ports", side_effect=slow([])), \
+             patch.object(monitor, "docker_containers", side_effect=slow({"available": True, "containers": []})), \
+             patch.object(monitor, "proxmox_stats", side_effect=slow({"available": False, "state": "unconfigured"})):
+            begin = time.monotonic()
+            result = monitor.snapshot()
+        self.assertLess(time.monotonic() - begin, 1.5)
+        self.assertEqual(result["proxmox"]["state"], "unconfigured")
 
     def test_port_permission_error_is_not_an_empty_list(self):
         with patch.object(monitor.psutil, "net_connections", side_effect=monitor.psutil.AccessDenied()):
@@ -188,6 +271,7 @@ class ServerTests(unittest.TestCase):
 
     def test_snapshot_reports_collection_failure(self):
         with patch.object(monitor, "sample_realtime", return_value={}), \
+             patch.object(monitor, "proxmox_stats", return_value={"available": False, "state": "unconfigured"}), \
              patch.object(monitor, "block_devices", side_effect=RuntimeError("disk offline")), \
              patch.object(monitor, "network_interfaces", return_value=[]), \
              patch.object(monitor, "all_temperatures", return_value=[]), \
@@ -199,10 +283,83 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(result["collection_status"]["interfaces"]["ok"])
         self.assertEqual(result["history_interval_ms"], 5000)
 
+    def test_install_validates_proxmox_settings_and_python(self):
+        install = (Path(__file__).resolve().parents[1] / "server" / "install.sh").read_text()
+        self.assertIn("sys.version_info >= (3, 10)", install)
+        self.assertIn("PROXMOX_CERT_SHA256", install)
+        self.assertIn("^https://", install)
+
     def test_install_preserves_env_and_restarts_service(self):
         install = (Path(__file__).resolve().parents[1] / "server" / "install.sh").read_text()
         self.assertNotIn('cp -a "$SCRIPT_DIR/."', install)
         self.assertIn("systemctl restart rpi-monitor.service", install)
+
+
+class PinnedConnectionTests(unittest.TestCase):
+    """The Proxmox client talks to a real local TLS server with a throwaway certificate."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        key, cert = Path(cls.tmp.name) / "key.pem", Path(cls.tmp.name) / "cert.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                        "-subj", "/CN=localhost", "-keyout", str(key), "-out", str(cert)],
+                       check=True, capture_output=True)
+        der = ssl.PEM_cert_to_DER_cert(cert.read_text())
+        cls.fingerprint = hashlib.sha256(der).hexdigest()
+        cls.requests = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.0"  # closes after every answer: forces reconnections
+
+            def do_GET(handler):
+                cls.requests.append((handler.path, handler.headers.get("Authorization")))
+                body = json.dumps({"data": {"path": handler.path}}).encode()
+                handler.send_response(200)
+                handler.send_header("Content-Type", "application/json")
+                handler.send_header("Content-Length", str(len(body)))
+                handler.end_headers()
+                handler.wfile.write(body)
+
+            def log_message(handler, *args):
+                pass
+
+        cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+        cls.server.socket = context.wrap_socket(cls.server.socket, server_side=True)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.url = f"https://127.0.0.1:{cls.server.server_address[1]}/api2/json"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.tmp.cleanup()
+
+    def configure(self, fingerprint):
+        return patch.multiple(monitor, PROXMOX_API_URL=self.url, PROXMOX_TOKEN_ID="monitor@pve!esp32",
+                              PROXMOX_TOKEN_SECRET="secret", PROXMOX_CERT_SHA256=fingerprint)
+
+    def test_pinned_certificate_is_checked_on_every_connection(self):
+        self.requests.clear()
+        with self.configure(self.fingerprint):
+            data = monitor.proxmox_fetch(("version", "cluster/resources", "cluster/tasks"))
+        self.assertEqual([item["path"] for item in data],
+                         ["/api2/json/version", "/api2/json/cluster/resources", "/api2/json/cluster/tasks"])
+        self.assertEqual(self.requests[0][1], "PVEAPIToken=monitor@pve!esp32=secret")
+
+    def test_wrong_certificate_never_receives_the_token(self):
+        self.requests.clear()
+        with self.configure("0" * 64):
+            with self.assertRaisesRegex(RuntimeError, "no coincide"):
+                monitor.proxmox_fetch(("version",))
+        self.assertEqual(self.requests, [])
+
+    def test_invalid_fingerprint_is_rejected_before_connecting(self):
+        with self.configure("abc"):
+            with self.assertRaisesRegex(RuntimeError, "huella"):
+                monitor.proxmox_fetch(("version",))
 
 
 if __name__ == "__main__":

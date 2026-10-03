@@ -5,12 +5,14 @@ import hmac
 import hashlib
 import http.client
 import os
+import re
 import shutil
 import socket
 import ssl
 import subprocess
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -22,11 +24,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 
-APP_VERSION = "1.0"
+APP_VERSION = "3.0"
 SCHEMA_VERSION = 2
 API_TOKEN = os.getenv("MONITOR_API_TOKEN", "").strip()
 if not API_TOKEN or API_TOKEN == "change-me":
     raise RuntimeError("MONITOR_API_TOKEN must be set to a non-default value")
+API_TOKEN_BYTES = API_TOKEN.encode("utf-8")
 PROXMOX_API_URL = os.getenv("PROXMOX_API_URL", "").strip().rstrip("/")
 PROXMOX_TOKEN_ID = os.getenv("PROXMOX_TOKEN_ID", "").strip()
 PROXMOX_TOKEN_SECRET = os.getenv("PROXMOX_TOKEN_SECRET", "").strip()
@@ -102,6 +105,11 @@ _cache: dict[str, tuple[float, Any]] = {}
 _cache_status: dict[str, dict[str, Any]] = {}
 _cache_retry_after: dict[str, float] = {}
 _cache_lock = Lock()
+# One lock per collector: a slow Proxmox or Docker read never blocks the others.
+_cache_key_locks: dict[str, Lock] = {}
+_collector_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="collector")
+_last_cpu_times = psutil.cpu_times()
+_last_core_times = psutil.cpu_times(percpu=True)
 
 
 class Health(BaseModel):
@@ -112,32 +120,68 @@ class Health(BaseModel):
 
 
 def auth(x_api_key: str | None = Header(default=None)) -> None:
-    if not x_api_key or not hmac.compare_digest(x_api_key, API_TOKEN):
+    # Starlette decodes headers as latin-1; comparing bytes also accepts non-ASCII
+    # input (hmac.compare_digest rejects non-ASCII str with a 500 error).
+    supplied = (x_api_key or "").encode("latin-1", "replace")
+    if not x_api_key or not hmac.compare_digest(supplied, API_TOKEN_BYTES):
         raise HTTPException(status_code=401, detail="invalid api key")
 
 
-def cached(name: str, ttl: float, loader: Callable[[], Any]) -> Any:
-    now = time.monotonic()
+def _key_lock(name: str) -> Lock:
     with _cache_lock:
-        previous = _cache.get(name)
-        if previous and now - previous[0] < ttl:
-            return previous[1]
-        if now < _cache_retry_after.get(name, 0):
-            if name in _cache_status and previous:
-                _cache_status[name]["age_s"] = round(now - previous[0], 1)
-            return previous[1] if previous else None
+        return _cache_key_locks.setdefault(name, Lock())
+
+
+def cached(name: str, ttl: float, loader: Callable[[], Any]) -> Any:
+    with _key_lock(name):
+        now = time.monotonic()
+        with _cache_lock:
+            previous = _cache.get(name)
+            if previous and now - previous[0] < ttl:
+                return previous[1]
+            if now < _cache_retry_after.get(name, 0):
+                if name in _cache_status and previous:
+                    _cache_status[name]["age_s"] = round(now - previous[0], 1)
+                return previous[1] if previous else None
         try:
             value = loader()
         except Exception as exc:
-            age = round(now - previous[0], 1) if previous else None
-            _cache_status[name] = {"ok": False, "stale": previous is not None,
-                                   "age_s": age, "error": str(exc)[:120]}
-            _cache_retry_after[name] = now + min(ttl, 5)
+            with _cache_lock:
+                age = round(now - previous[0], 1) if previous else None
+                _cache_status[name] = {"ok": False, "stale": previous is not None,
+                                       "age_s": age, "error": str(exc)[:120]}
+                _cache_retry_after[name] = now + min(ttl, 5)
             return previous[1] if previous else None
-        _cache[name] = (now, value)
-        _cache_retry_after.pop(name, None)
-        _cache_status[name] = {"ok": True, "stale": False, "age_s": 0}
+        with _cache_lock:
+            _cache[name] = (now, value)
+            _cache_retry_after.pop(name, None)
+            _cache_status[name] = {"ok": True, "stale": False, "age_s": 0}
         return value
+
+
+def _history_interval_ms(history: list[dict[str, Any]], default_ms: int) -> int:
+    """Average spacing of the samples, so the panel shows the real time span."""
+    if len(history) < 2:
+        return default_ms
+    span_s = history[-1]["time"] - history[0]["time"]
+    return max(1000, round(span_s * 1000 / (len(history) - 1)))
+
+
+def _cpu_busy_total(times: Any) -> tuple[float, float]:
+    values = times._asdict()
+    # Same accounting as psutil: guest time is already included in user/nice.
+    total = sum(values.values()) - values.get("guest", 0.0) - values.get("guest_nice", 0.0)
+    idle = values.get("idle", 0.0) + values.get("iowait", 0.0)
+    return total - idle, total
+
+
+def _cpu_percent(before: Any, after: Any) -> float:
+    busy_before, total_before = _cpu_busy_total(before)
+    busy_after, total_after = _cpu_busy_total(after)
+    total = total_after - total_before
+    if total <= 0:
+        return 0.0
+    return round(min(100.0, max(0.0, (busy_after - busy_before) * 100.0 / total)), 1)
 
 
 def local_ip() -> str:
@@ -441,39 +485,69 @@ class ProxmoxOfflineError(RuntimeError):
     """The optional Proxmox host cannot currently be reached."""
 
 
-def proxmox_request(path: str) -> Any:
-    """Read one Proxmox endpoint while pinning the node certificate."""
+PROXMOX_TIMEOUT_S = 2.5
+# Upper bound for the three reads together, so the panel request never waits too long.
+PROXMOX_DEADLINE_S = 6.0
+
+
+class PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection that only accepts the node certificate with the pinned SHA-256.
+
+    The check runs in connect(), so it also covers the automatic reconnection that
+    http.client performs when the server closes a keep-alive connection.
+    """
+
+    def __init__(self, host: str, port: int, fingerprint: str, timeout: float) -> None:
+        super().__init__(host, port, timeout=timeout, context=ssl._create_unverified_context())
+        self.fingerprint = fingerprint
+
+    def connect(self) -> None:
+        super().connect()
+        certificate = self.sock.getpeercert(binary_form=True) if self.sock else None
+        actual = hashlib.sha256(certificate or b"").hexdigest()
+        if not certificate or not hmac.compare_digest(actual, self.fingerprint):
+            self.close()
+            raise RuntimeError("certificado Proxmox no coincide")
+
+
+def proxmox_fetch(paths: tuple[str, ...]) -> list[Any]:
+    """Read several Proxmox endpoints over one certificate-pinned connection."""
     if not proxmox_configured():
         raise RuntimeError("Proxmox no configurado")
     endpoint = urlsplit(PROXMOX_API_URL)
+    try:
+        port = endpoint.port or 443
+    except ValueError as exc:
+        raise RuntimeError("URL Proxmox invalida") from exc
     if endpoint.scheme != "https" or not endpoint.hostname:
         raise RuntimeError("URL Proxmox invalida")
-    if len(PROXMOX_CERT_SHA256) != 64:
+    if not re.fullmatch(r"[0-9a-f]{64}", PROXMOX_CERT_SHA256):
         raise RuntimeError("huella TLS Proxmox invalida")
     base_path = endpoint.path.rstrip("/")
-    request_path = f"{base_path}/{path.lstrip('/')}"
-    connection = http.client.HTTPSConnection(
-        endpoint.hostname, endpoint.port or 443,
-        timeout=2.5, context=ssl._create_unverified_context(),
-    )
+    deadline = time.monotonic() + PROXMOX_DEADLINE_S
+    connection = PinnedHTTPSConnection(endpoint.hostname, port, PROXMOX_CERT_SHA256, PROXMOX_TIMEOUT_S)
+    results: list[Any] = []
     try:
-        connection.connect()
-        certificate = connection.sock.getpeercert(binary_form=True) if connection.sock else b""
-        fingerprint = hashlib.sha256(certificate).hexdigest()
-        if not hmac.compare_digest(fingerprint, PROXMOX_CERT_SHA256):
-            raise RuntimeError("certificado Proxmox no coincide")
-        connection.request("GET", request_path, headers={
-            "Authorization": f"PVEAPIToken={PROXMOX_TOKEN_ID}={PROXMOX_TOKEN_SECRET}",
-            "Accept": "application/json",
-        })
-        response = connection.getresponse()
-        payload = response.read()
-        if response.status != 200:
-            raise RuntimeError(f"Proxmox HTTP {response.status}")
-        decoded = json.loads(payload)
-        if "data" not in decoded:
-            raise RuntimeError("respuesta Proxmox incompleta")
-        return decoded["data"]
+        for path in paths:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProxmoxOfflineError("Proxmox sin respuesta")
+            connection.timeout = min(PROXMOX_TIMEOUT_S, remaining)
+            if connection.sock:
+                connection.sock.settimeout(connection.timeout)
+            connection.request("GET", f"{base_path}/{path.lstrip('/')}", headers={
+                "Authorization": f"PVEAPIToken={PROXMOX_TOKEN_ID}={PROXMOX_TOKEN_SECRET}",
+                "Accept": "application/json",
+            })
+            response = connection.getresponse()
+            payload = response.read()
+            if response.status != 200:
+                raise RuntimeError(f"Proxmox HTTP {response.status}")
+            decoded = json.loads(payload)
+            if not isinstance(decoded, dict) or "data" not in decoded:
+                raise RuntimeError("respuesta Proxmox incompleta")
+            results.append(decoded["data"])
+        return results
     except ssl.SSLError as exc:
         raise RuntimeError(f"Proxmox: {exc}") from exc
     except OSError as exc:
@@ -576,16 +650,18 @@ def proxmox_stats() -> dict[str, Any]:
     if not proxmox_configured():
         return {**_proxmox_offline(), "state": "unconfigured", "error": "no configurado"}
     try:
-        version = proxmox_request("version")
-        resources = proxmox_request("cluster/resources")
-        tasks_raw = proxmox_request("cluster/tasks")
+        version, resources, tasks_raw = proxmox_fetch(("version", "cluster/resources", "cluster/tasks"))
     except ProxmoxOfflineError:
         return _proxmox_offline()
+    if not isinstance(version, dict) or not isinstance(resources, list) or not isinstance(tasks_raw, list):
+        raise RuntimeError("respuesta Proxmox inesperada")
 
     nodes: list[dict[str, Any]] = []
     guests: list[dict[str, Any]] = []
     storage: list[dict[str, Any]] = []
     for item in resources:
+        if not isinstance(item, dict):
+            continue
         kind = str(item.get("type") or "")
         if kind == "node":
             nodes.append({
@@ -629,7 +705,9 @@ def proxmox_stats() -> dict[str, Any]:
             })
     guests.sort(key=lambda item: (item["status"] != "running", item["id"]))
     storage.sort(key=lambda item: (item["status"] != "available", item["name"]))
-    tasks = [_proxmox_task(item) for item in tasks_raw[:20]]
+    recent = sorted((item for item in tasks_raw if isinstance(item, dict)),
+                    key=lambda item: int(item.get("starttime") or 0), reverse=True)[:20]
+    tasks = [_proxmox_task(item) for item in recent]
     task_priority = {"ERROR": 0, "CANCELLED": 1, "RUNNING": 2, "OK": 3}
     tasks.sort(key=lambda item: (task_priority.get(item["state"], 4),
                                  -item["start_time"]))
@@ -659,7 +737,8 @@ def proxmox_stats() -> dict[str, Any]:
         "tasks_failed": failed_tasks,
         "tasks_cancelled": cancelled_tasks,
         "history": proxmox_history,
-        "history_interval_ms": 8000,
+        # Samples are taken when the cache refreshes, so measure their real spacing.
+        "history_interval_ms": _history_interval_ms(proxmox_history, 8000),
         "nodes": nodes,
         "guests": guests,
         "storage": storage,
@@ -668,12 +747,19 @@ def proxmox_stats() -> dict[str, Any]:
 
 
 def sample_realtime() -> dict[str, Any]:
-    global _last_net, _last_disk, _last_sample_time
+    global _last_net, _last_disk, _last_sample_time, _last_cpu_times, _last_core_times
     with _sample_lock:
         now_mono = time.monotonic()
         elapsed = max(now_mono - _last_sample_time, 0.001)
-        cpu_total = psutil.cpu_percent(interval=None)
-        cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
+        # psutil.cpu_percent() keeps its baseline per thread and FastAPI answers from a
+        # thread pool, so measure against the previous request ourselves.
+        cpu_times = psutil.cpu_times()
+        core_times = psutil.cpu_times(percpu=True)
+        cpu_total = _cpu_percent(_last_cpu_times, cpu_times)
+        if len(core_times) != len(_last_core_times):
+            _last_core_times = core_times
+        cpu_per_core = [_cpu_percent(before, after) for before, after in zip(_last_core_times, core_times)]
+        _last_cpu_times, _last_core_times = cpu_times, core_times
         memory = psutil.virtual_memory()
         swap = psutil.swap_memory()
         try:
@@ -718,7 +804,7 @@ def sample_realtime() -> dict[str, Any]:
             "agent_uptime_s": int(now_mono - STARTED_MONOTONIC),
         },
         "cpu": {
-            "percent": round(cpu_total, 1), "per_core": [round(v, 1) for v in cpu_per_core],
+            "percent": cpu_total, "per_core": cpu_per_core,
             "temperature_c": temp, "frequency_mhz": cpu_frequency(),
             "load": [round(load1, 2), round(load5, 2), round(load15, 2)],
         },
@@ -744,12 +830,20 @@ def health(_: None = Depends(auth)) -> Health:
 @app.get("/api/v2/snapshot")
 def snapshot(_: None = Depends(auth)) -> dict[str, Any]:
     realtime = sample_realtime()
-    mounts = cached("block_devices", 15.0, block_devices)
-    interfaces = cached("interfaces", 10.0, network_interfaces)
-    temperatures = cached("temperatures", 5.0, all_temperatures)
-    ports = cached("ports", 8.0, listening_ports)
-    docker = cached("docker", 8.0, docker_containers)
-    proxmox = cached("proxmox", 8.0, proxmox_stats)
+    collectors = {
+        "block_devices": (15.0, block_devices),
+        "interfaces": (10.0, network_interfaces),
+        "temperatures": (5.0, all_temperatures),
+        "ports": (8.0, listening_ports),
+        "docker": (8.0, docker_containers),
+        "proxmox": (8.0, proxmox_stats),
+    }
+    # Run in parallel: the response waits for the slowest collector, not for their sum.
+    futures = {name: _collector_pool.submit(cached, name, ttl, loader)
+               for name, (ttl, loader) in collectors.items()}
+    results = {name: future.result() for name, future in futures.items()}
+    mounts, interfaces, temperatures = results["block_devices"], results["interfaces"], results["temperatures"]
+    ports, docker, proxmox = results["ports"], results["docker"], results["proxmox"]
     with _cache_lock:
         collection_status = {name: dict(state) for name, state in _cache_status.items()}
     if docker and not docker.get("available") and docker.get("error") != "docker no instalado":
@@ -773,7 +867,7 @@ def snapshot(_: None = Depends(auth)) -> dict[str, Any]:
         "proxmox": proxmox or {"available": False, "error": "lectura no disponible",
                                "nodes": [], "guests": [], "storage": [], "tasks": []},
         "collection_status": collection_status,
-        "history_interval_ms": HISTORY_INTERVAL_S * 1000,
+        "history_interval_ms": _history_interval_ms(history, HISTORY_INTERVAL_S * 1000),
         "history": history,
     }
 

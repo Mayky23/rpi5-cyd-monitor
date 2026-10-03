@@ -28,7 +28,8 @@ comandos exactos para instalar la API en tu servidor.
 - Resumen, CPU, RAM, temperatura, discos, red, puertos y Docker de la RPi5.
 - Resumen, rendimiento, VM/LXC, almacenamiento y tareas de Proxmox.
 - Gráficas históricas independientes con escala adaptativa.
-- Estados claros `ONLINE`, `PARCIAL`, `OFFLINE` y `ERROR`.
+- Estados claros `ONLINE`, `PARCIAL`, `OFFLINE`, `SIN CONFIG` y `ERROR`: si aún no has
+  configurado Proxmox, sus paneles lo indican en ámbar en lugar de mostrar errores.
 - Cuatro orientaciones, brillo nocturno, diez temas y navegación táctil.
 - Cuatro animaciones de arranque genéricas y una pantalla `PERSONAL`.
 - API de solo lectura protegida con token y certificado Proxmox fijado por SHA-256.
@@ -38,8 +39,10 @@ comandos exactos para instalar la API en tu servidor.
 
 - ESP32-2432S028R con cable USB de datos.
 - Windows 10/11 con PowerShell y Python 3.10 o posterior.
-- Una Raspberry Pi o equipo Debian/Linux para alojar la API.
-- Un token de Proxmox VE con el rol de solo lectura `PVEAuditor`.
+- Una Raspberry Pi o equipo Debian/Linux con Python 3.10 o posterior para alojar
+  la API (Raspberry Pi OS Bookworm o Debian 12 en adelante).
+- Un token de Proxmox VE con el rol de solo lectura `PVEAuditor` (opcional: el
+  panel funciona sin él y muestra los paneles de Proxmox como `SIN CONFIG`).
 
 ## 1. Instalar la API
 
@@ -52,7 +55,9 @@ sudo ./install.sh
 ```
 
 El instalador crea un token aleatorio y conserva `/opt/rpi-monitor/server/.env`
-durante futuras actualizaciones. Consúltalo localmente con:
+durante futuras actualizaciones. Para actualizar más adelante, ejecuta
+`git pull` dentro de `rpi5-cyd-monitor` y repite `sudo ./install.sh`.
+Consulta el token localmente con:
 
 ```bash
 sudo grep '^MONITOR_API_TOKEN=' /opt/rpi-monitor/server/.env
@@ -67,6 +72,8 @@ PROXMOX_TOKEN_SECRET=secreto-del-token-api
 PROXMOX_CERT_SHA256=huella-sha256-sin-dos-puntos
 ```
 
+También puedes pasarlas al instalador (`--proxmox-url`, `--proxmox-token-id`,
+`--proxmox-token-secret` y `--proxmox-cert-sha256`), que comprueba su formato.
 Usa un token dedicado con el rol `PVEAuditor` sobre `/`. Obtén la huella del
 certificado desde el equipo que aloja la API:
 
@@ -105,6 +112,14 @@ El asistente:
 La configuración privada se guarda en `firmware/include/config.local.h`. Este
 archivo está excluido de Git.
 
+La pantalla usa siempre la configuración más reciente: si antes usaste el
+instalador web y ahora cargas el firmware con `Install.ps1`, se aplican los datos
+nuevos; si después vuelves a la web, gana otra vez la web.
+
+Si la API va por `https://`, indica la huella SHA-256 de su certificado (el
+asistente la pide, o usa `-ApiCertSha256`). Sin huella la conexión se cifra pero
+el certificado no se comprueba.
+
 ## Pantalla de arranque personal
 
 Durante la instalación puedes elegir una imagen PNG/JPG, que se adapta a
@@ -124,7 +139,8 @@ también excluido de Git. Selecciona `PERSONAL` desde la página Arranque del pa
 - No publiques `config.local.h`, `custom_splash.local.h` ni `.env`.
 - No reutilices contraseñas personales como tokens de la API.
 - No expongas el puerto 8787 directamente a Internet; utiliza una VPN o proxy HTTPS.
-- El certificado de Proxmox se valida mediante su huella SHA-256.
+- El certificado de Proxmox se valida mediante su huella SHA-256, también al reconectar.
+- Con una API `https://`, fija también su huella SHA-256 en el panel.
 
 ## Estructura
 
@@ -132,20 +148,24 @@ también excluido de Git. Selecciona `PERSONAL` desde la página Arranque del pa
 |---|---|
 | `server/` | API FastAPI de solo lectura, instalador y servicio systemd. |
 | `firmware/` | Firmware PlatformIO, fuentes, animaciones y herramientas de generación y captura. |
-| `tests/` | Pruebas de la API. |
+| `tests/` | Pruebas de la API, de las herramientas y de la lógica del firmware en el PC (`tests/firmware`). |
 | `Install.ps1` | Instalador guiado para Windows. |
-| `web/` | Instalador web publicado en GitHub Pages. |
 
 ## Desarrollo y pruebas
 
 ```powershell
-python -m pip install -r server/requirements-dev.txt
+python -m pip install -r server/requirements-dev.txt -r firmware/tools/requirements.txt
 python -m unittest discover -s tests -v
 python firmware/tools/build_gallery.py --check
+python firmware/tools/check_fonts.py
+python firmware/tools/check_theme_contrast.py
 pio run -d firmware -e esp32-2432S028R
+bash tests/firmware/run.sh   # lógica del firmware en el PC (Linux/WSL, tras compilar)
 ```
 
-El firmware se valida en CI. Las herramientas USB de `firmware/tools` capturan
+El firmware se valida en CI. Las mismas correcciones deben aplicarse en las ramas
+`rpi5`, `proxmox` y `rpi5-proxmox`, que comparten el código; el CI avisa si el
+código común se ha desincronizado. Las herramientas USB de `firmware/tools` capturan
 los paneles, orientaciones, temas y animaciones desde la placa real.
 
 Para regenerar la imagen de este README, instala
@@ -163,18 +183,12 @@ firmware normal con `.\Install.ps1`.
 
 ### Instalador web
 
-`web/` contiene la página y `.github/workflows/pages.yml` la publica: compila las
-tres ramas, reúne los binarios de cada edición y despliega el sitio. Para
-activarlo, en *Settings → Pages* elige *Source: GitHub Actions*. Sube antes
-`rpi5` y `proxmox` y por último `main`, o lanza el flujo a mano desde *Actions*.
+La página vive en la rama `web` y su flujo de GitHub Actions compila el firmware
+de las tres ramas de edición. Cada vez que se sube un cambio a `rpi5`, `proxmox`
+o `rpi5-proxmox`, su CI vuelve a lanzar ese flujo para que la web publique el
+firmware nuevo.
 
 El firmware lee Wi-Fi, API y token de un bloque de 4 KB que la página escribe en
-la partición `spiffs` (`firmware/include/runtime_config.h`). Si no existe, usa los
-valores de `config.local.h`, así que `Install.ps1` sigue funcionando igual.
-Para probar la página en local:
-
-```powershell
-pio run -d firmware -e esp32-2432S028R
-python web/build_site.py --local-preview --out $env:TEMP\cyd-preview
-python -m http.server 8000 --directory $env:TEMP\cyd-preview
-```
+la partición `spiffs` (`firmware/include/runtime_config.h`). Si no existe, o si
+es más antiguo que la configuración compilada por `Install.ps1`, usa los valores
+de `config.local.h`.

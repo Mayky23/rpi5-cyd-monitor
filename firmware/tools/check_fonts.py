@@ -3,13 +3,13 @@ import re
 import unittest
 
 from PIL import Image, ImageDraw, ImageFont
-from build_fonts import FONT_PATH, FONT_SIZES, rasterize
+from build_fonts import FONT_PATH, FONT_SIZES, load_font, rasterize
 
 
 class FontTests(unittest.TestCase):
     def test_complete_ascii_without_clipped_ink(self):
         for size in FONT_SIZES:
-            font = ImageFont.truetype(str(FONT_PATH), size)
+            font = load_font(size)
             top = min(font.getbbox(chr(c))[1] for c in range(32, 127))
             height, glyphs = rasterize(size)
             self.assertEqual(len(glyphs), 95)

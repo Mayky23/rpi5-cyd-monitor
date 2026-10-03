@@ -28,10 +28,17 @@
 #ifndef DEVICE_NAME
 #define DEVICE_NAME "rpi-panel"
 #endif
-
-#ifndef PANEL_TITLE
-#define PANEL_TITLE "RPI5"
+// Huella SHA-256 del certificado de la API (64 hex). Solo se usa con https://;
+// si queda vacía la conexión se cifra pero el certificado no se comprueba.
+#ifndef API_CERT_SHA256
+#define API_CERT_SHA256 ""
 #endif
+// Momento (segundos Unix) en que se generó esta configuración. Install.ps1 lo
+// rellena; si el bloque del instalador web es más reciente, se usa ese bloque.
+#ifndef CONFIG_STAMP
+#define CONFIG_STAMP 0UL
+#endif
+
 
 #define MONITOR_PROFILE_COMBINED 0
 #define MONITOR_PROFILE_RPI5 1

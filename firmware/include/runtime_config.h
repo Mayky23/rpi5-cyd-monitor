@@ -16,10 +16,15 @@
  *   8..9    longitud del JSON (little endian)
  *   10..11  reservado (0)
  *   12..15  CRC-32 del JSON (little endian, el mismo que zlib.crc32)
- *   16..    JSON UTF-8: {"ssid","pass","api","token","name"}
+ *   16..    JSON UTF-8: {"ssid","pass","api","token","name","pin","stamp"}
  *
- * Si el bloque no existe o no es válido se usan los valores de config.h /
- * config.local.h, de modo que Install.ps1 sigue funcionando igual que antes.
+ * "pin" (opcional) es la huella SHA-256 del certificado de la API https y
+ * "stamp" (opcional) los segundos Unix en que se generó el bloque.
+ *
+ * Gana la configuración más reciente: el bloque de la flash se usa si su "stamp"
+ * es igual o posterior a CONFIG_STAMP (el que escribe Install.ps1). Así, cargar
+ * el firmware con Install.ps1 después del instalador web aplica la nueva
+ * configuración, y volver a usar la web la sustituye otra vez.
  */
 namespace RuntimeConfig {
 
@@ -29,6 +34,8 @@ struct Values {
   String apiBase = API_BASE_URL;
   String token = API_TOKEN;
   String deviceName = DEVICE_NAME;
+  String certSha256 = API_CERT_SHA256;
+  uint32_t stamp = CONFIG_STAMP;
   bool fromFlash = false;
 };
 
@@ -43,6 +50,18 @@ inline uint32_t crc32(const uint8_t *data, size_t length) {
     for (uint8_t bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
   }
   return ~crc;
+}
+
+// Deja solo los 64 dígitos hexadecimales en minúscula; vacío si el formato no es válido.
+inline String normalizeFingerprint(const String &value) {
+  String hex;
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if (c == ':' || c == ' ') continue;
+    if (!isxdigit(static_cast<unsigned char>(c))) return "";
+    hex += static_cast<char>(tolower(static_cast<unsigned char>(c)));
+  }
+  return hex.length() == 64 ? hex : "";
 }
 
 // Devuelve true y rellena `out` solo si el bloque es íntegro y sus valores son razonables.
@@ -61,10 +80,13 @@ inline bool parse(const uint8_t *sector, Values &out) {
   String api = json["api"] | "";
   String token = json["token"] | "";
   String name = json["name"] | "";
+  const String pinText = json["pin"] | "";
+  const String pin = normalizeFingerprint(pinText);
   while (api.endsWith("/")) api.remove(api.length() - 1);
   const bool validUrl = api.startsWith("http://") || api.startsWith("https://");
   if (ssid.length() < 1 || ssid.length() > 32 || password.length() > 64 || !validUrl ||
-      token.length() < 1 || token.length() > 128 || name.length() > 32) {
+      token.length() < 1 || token.length() > 128 || name.length() > 32 ||
+      (pinText.length() && !pin.length())) {
     return false;
   }
   out.ssid = ssid;
@@ -72,18 +94,30 @@ inline bool parse(const uint8_t *sector, Values &out) {
   out.apiBase = api;
   out.token = token;
   if (name.length()) out.deviceName = name;
+  out.certSha256 = pin;
+  out.stamp = json["stamp"] | 0UL;
   out.fromFlash = true;
   return true;
 }
 
+// Elige entre la configuración compilada y la del bloque de la flash.
+inline Values choose(const Values &compiled, const uint8_t *sector) {
+  Values flash = compiled;
+  if (sector && parse(sector, flash) && flash.stamp >= compiled.stamp) return flash;
+  Values result = compiled;
+  result.certSha256 = normalizeFingerprint(compiled.certSha256);
+  return result;
+}
+
 inline Values load() {
-  Values values;
+  const Values compiled;
   const esp_partition_t *partition =
       esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
-  if (!partition) return values;
+  if (!partition) return choose(compiled, nullptr);
   uint8_t *sector = static_cast<uint8_t *>(malloc(SECTOR_SIZE));
-  if (!sector) return values;
-  if (esp_partition_read(partition, 0, sector, SECTOR_SIZE) == ESP_OK) parse(sector, values);
+  if (!sector) return choose(compiled, nullptr);
+  const bool read = esp_partition_read(partition, 0, sector, SECTOR_SIZE) == ESP_OK;
+  const Values values = choose(compiled, read ? sector : nullptr);
   free(sector);
   return values;
 }

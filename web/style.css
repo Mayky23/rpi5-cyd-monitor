@@ -114,6 +114,7 @@ input.invalid { border-color: var(--red); }
 .with-btn input { flex: 1; min-width: 0; }
 .err { margin: 6px 0 0; color: var(--red); font-size: .85rem; }
 .err:empty { display: none; }
+.err.warn { color: var(--amber); }
 
 .mini { height: 44px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--ink-3); color: var(--paper); font: .82rem var(--mono); cursor: pointer; white-space: nowrap; }
 .mini:hover { border-color: var(--amber); color: var(--amber); }

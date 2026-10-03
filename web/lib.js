@@ -32,14 +32,26 @@ export function crc32(bytes) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-export function buildConfigBlock({ ssid, wifiPass, api, token, deviceName }) {
-  const json = encoder.encode(JSON.stringify({
+// Huella SHA-256 sin separadores y en minúsculas; null si no tiene 64 dígitos hexadecimales.
+export function normalizeFingerprint(value) {
+  const hex = String(value || "").replace(/[:\s]/g, "").toLowerCase();
+  return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
+}
+
+// "stamp" (segundos Unix) permite al firmware quedarse con la configuración más reciente:
+// la de este bloque o la que compiló Install.ps1 (CONFIG_STAMP).
+export function buildConfigBlock({ ssid, wifiPass, api, token, deviceName, apiPin = "", stamp = Math.floor(Date.now() / 1000) }) {
+  const config = {
     ssid,
     pass: wifiPass,
     api: api.replace(/\/+$/, ""),
     token,
     name: deviceName,
-  }));
+    stamp,
+  };
+  const pin = normalizeFingerprint(apiPin);
+  if (pin) config.pin = pin;
+  const json = encoder.encode(JSON.stringify(config));
   if (json.length > SECTOR_SIZE - HEADER_SIZE) throw new Error("La configuración es demasiado larga");
   const block = new Uint8Array(SECTOR_SIZE).fill(0xff);
   block.set(encoder.encode("CYDCFG01"), 0);
@@ -53,11 +65,19 @@ export function buildConfigBlock({ ssid, wifiPass, api, token, deviceName }) {
 
 export function validate(values) {
   const errors = {};
+  const warnings = {};
   const fail = (field, message) => { errors[field] ??= message; };
 
-  if (!values.ssid) fail("ssid", "Escribe el nombre de tu Wi-Fi.");
+  // El nombre de la Wi-Fi no se recorta: un espacio al principio o al final puede ser real.
+  if (!values.ssid || !values.ssid.trim()) fail("ssid", "Escribe el nombre de tu Wi-Fi.");
   else if (byteLength(values.ssid) > 32) fail("ssid", "El nombre de una Wi-Fi no puede pasar de 32 caracteres.");
-  if (byteLength(values.wifiPass) > 63 && !/^[0-9a-fA-F]{64}$/.test(values.wifiPass)) {
+  else if (values.ssid !== values.ssid.trim()) {
+    warnings.ssid = "Ojo: el nombre empieza o termina con espacios. Déjalos solo si tu Wi-Fi los tiene.";
+  }
+  const passLength = byteLength(values.wifiPass);
+  if (passLength > 0 && passLength < 8) {
+    fail("wifiPass", "La contraseña de una Wi-Fi WPA tiene al menos 8 caracteres. Déjala vacía solo si la red es abierta.");
+  } else if (passLength > 63 && !/^[0-9a-fA-F]{64}$/.test(values.wifiPass)) {
     fail("wifiPass", "La contraseña de la Wi-Fi puede tener como máximo 63 caracteres (o 64 si es una clave hexadecimal).");
   }
   if (!/^[A-Za-z0-9-]{1,32}$/.test(values.deviceName)) {
@@ -73,11 +93,19 @@ export function validate(values) {
       fail("api", "Debe empezar por http:// o https://, por ejemplo http://192.168.1.50:8787");
     }
   }
-  if (!values.token) fail("token", "Pulsa «Generar» o escribe tu propio token.");
+  if (!values.token) fail("token", "Pulsa «Regenerar» o escribe tu propio token.");
   else if (values.token.length < 16 || values.token.length > 128 || /\s/.test(values.token)) {
     fail("token", "Entre 16 y 128 caracteres y sin espacios.");
   }
-  return { errors, problems: Object.values(errors), url };
+  if (values.apiPin && url?.protocol === "https:" && !normalizeFingerprint(values.apiPin)) {
+    fail("apiPin", "La huella debe tener 64 caracteres hexadecimales (los dos puntos se ignoran).");
+  }
+  return { errors, warnings, problems: Object.values(errors), url };
+}
+
+// Dirección base de la API tal como la usa la pantalla (incluida una ruta si hay proxy).
+export function apiBase(url) {
+  return url.origin + url.pathname.replace(/\/+$/, "");
 }
 
 export function randomToken() {
@@ -101,9 +129,12 @@ export function buildManifest({ baseUrl, version, configUrl, configOnly }) {
 export function buildCommands(values, edition, url) {
   const info = EDITIONS[edition];
   const token = values.token || "TU_TOKEN";
+  // Una carpeta nueva cada vez: repetir el comando instala siempre el código actual
+  // y, si un paso falla, los siguientes no se ejecutan.
   const lines = [
-    `git clone --branch ${info.branch} --single-branch ${REPO}`,
-    "cd rpi5-cyd-monitor/server",
+    `DIR="$(mktemp -d)" && \\`,
+    `git clone --depth 1 --branch ${info.branch} ${REPO} "$DIR" && \\`,
+    `cd "$DIR/server" && \\`,
   ];
   const flags = [`--token ${shellQuote(token)}`];
   // La API escucha en el puerto de la dirección elegida. Con https suele haber un proxy delante y no se toca.
@@ -116,11 +147,15 @@ export function buildCommands(values, edition, url) {
   }
   lines.push(`sudo ./install.sh ${flags.join(" \\\n  ")}`);
 
-  const apiBase = url ? url.origin : "http://IP_DE_LA_API:8787";
-  const check = `curl -s -H ${shellQuote(`X-API-Key: ${token}`)} ${apiBase}/health`;
+  const base = url ? apiBase(url) : "http://IP_DE_LA_API:8787";
+  const check = `curl -s -H ${shellQuote(`X-API-Key: ${token}`)} ${shellQuote(`${base}/health`)}`;
 
+  // openssl s_client usa el puerto 4433 si no se indica: siempre se escribe el puerto real.
   let pveHost = "proxmox.example.lan:8006";
-  try { pveHost = new URL(values.pveUrl).host; } catch { /* valor de ejemplo */ }
+  try {
+    const pve = new URL(values.pveUrl);
+    if (pve.hostname) pveHost = `${pve.hostname}:${pve.port || 443}`;
+  } catch { /* valor de ejemplo */ }
   const fingerprint = [
     `openssl s_client -connect ${pveHost} </dev/null 2>/dev/null \\`,
     "  | openssl x509 -noout -fingerprint -sha256 \\",

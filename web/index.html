@@ -112,6 +112,12 @@
               </details>
               <p class="err" id="err-api"></p>
             </div>
+            <div class="field" id="apiPinField" hidden>
+              <label for="apiPin">Huella SHA-256 del certificado de la API</label>
+              <input id="apiPin" class="mono" autocomplete="off" spellcheck="false" placeholder="64 caracteres hexadecimales (opcional)">
+              <p class="hint">Solo para direcciones <code>https://</code>. La pantalla comprobará que el certificado es este antes de enviar el token. Si lo dejas vacío la conexión va cifrada, pero cualquiera que se haga pasar por tu servidor podría recibir el token.</p>
+              <p class="err" id="err-apiPin"></p>
+            </div>
             <div class="field">
               <label for="token">Token de acceso</label>
               <div class="with-btn">
@@ -214,7 +220,7 @@
             <div class="term-bar"><span>Comprobar que responde</span><button type="button" class="mini" data-copy="cmdCheck">Copiar</button></div>
             <pre id="cmdCheck"></pre>
           </div>
-          <p class="hint">Si todo va bien, el segundo comando devuelve un texto con <code>"ok":true</code> y en unos segundos la pantalla empieza a mostrar datos. Para cambiar algo después, repite el paso 3 con <em>Solo cambiar la configuración</em>.</p>
+          <p class="hint">Si todo va bien, el segundo comando devuelve un texto con <code>"ok":true</code> y en unos segundos la pantalla empieza a mostrar datos. El primer comando sirve también para actualizar la API más adelante. Para cambiar algo de la pantalla, repite el paso 3 con <em>Solo cambiar la configuración</em>.</p>
         </div>
       </section>
     </main>

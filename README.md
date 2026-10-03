@@ -13,9 +13,11 @@ servidor. No hace falta descargar nada ni instalar programas en el PC.
 
 ## ¿Qué rama necesito?
 
-El proyecto tiene **una rama por herramienta**. Cada una contiene su propio
-firmware, su API, su instalador de Windows y su documentación, y no comparten
-código entre sí. Elige la rama según lo que quieras monitorizar:
+El proyecto tiene **una rama por herramienta**. Cada una contiene una copia
+completa del firmware, la API, el instalador de Windows y la documentación de su
+edición, así que puedes clonar solo la que necesites. El código común es el mismo
+en las tres ramas y su CI avisa si deja de estarlo. Elige la rama según lo que
+quieras monitorizar:
 
 | Quiero vigilar… | Rama | Paneles |
 |---|---|---|
@@ -41,6 +43,9 @@ Cambia `rpi5` por `proxmox` o `rpi5-proxmox` según el caso. Cada rama tiene su
 ## Cómo funciona
 
 1. `.github/workflows/pages.yml` compila el firmware de las tres ramas de edición.
+   Se ejecuta al subir cambios a `web` y también lo lanza el CI de `rpi5`,
+   `proxmox` y `rpi5-proxmox` tras cada subida, así que la página siempre ofrece
+   el firmware actual.
 2. `web/build_site.py` reúne los binarios y la página en un único sitio.
 3. GitHub Pages lo publica. La página carga el firmware con
    [ESP Web Tools](https://esphome.github.io/esp-web-tools/) mediante Web Serial.
@@ -48,12 +53,21 @@ Cambia `rpi5` por `proxmox` o `rpi5-proxmox` según el caso. Cada rama tiene su
 Los datos que escribes (Wi-Fi, dirección de la API y token) se generan en tu
 navegador y se graban en la placa por USB; no se envían a ningún servidor. El
 firmware los lee de un bloque de 4 KB de su memoria flash
-(`firmware/include/runtime_config.h`, en las ramas de edición).
+(`firmware/include/runtime_config.h`, en las ramas de edición). El bloque lleva
+la hora en que se creó: si después cargas el firmware con `Install.ps1`, la
+pantalla usa esa configuración más reciente, y viceversa.
+
+Si la API va por `https://`, la página pide la huella SHA-256 de su certificado
+para que la pantalla lo compruebe antes de enviar el token.
+
+El comando de instalación de la API descarga el código en una carpeta temporal
+nueva cada vez, así que repetirlo también sirve para actualizar.
 
 ## Desarrollo
 
 ```powershell
 python -m unittest discover -s tests -v
+node --test tests/lib.test.mjs
 ```
 
 Para ver la página en local necesitas una carpeta con los binarios de cada

@@ -116,6 +116,95 @@ inline std::vector<Port> ports(JsonArray source) {
   return rows;
 }
 
+// Only the fields the panel draws are kept, so long Docker/port/Proxmox lists
+// fit in the ESP32 heap (two snapshots coexist while a new one is parsed).
+inline void buildSnapshotFilter(JsonDocument &filter) {
+  filter.clear();
+  filter["schema"] = true;
+  filter["system"]["hostname"] = true;
+  filter["system"]["ip"] = true;
+  filter["system"]["uptime_s"] = true;
+  for (const char *field : {"percent", "temperature_c", "frequency_mhz", "load", "per_core"})
+    filter["cpu"][field] = true;
+  filter["memory"]["percent"] = true;
+  for (const char *field : {"status", "percent", "free_bytes", "io_status", "read_bps", "write_bps"})
+    filter["disk"][field] = true;
+  filter["network"]["rx_bps"] = true;
+  filter["network"]["tx_bps"] = true;
+  for (const char *field : {"device", "mount", "status", "percent", "used_bytes", "total_bytes", "size_bytes"})
+    filter["storage"]["mounts"][0][field] = true;
+  for (const char *field : {"name", "display_name", "ipv4", "up", "speed_mbps"})
+    filter["interfaces"][0][field] = true;
+  filter["temperatures"][0]["name"] = true;
+  filter["temperatures"][0]["current_c"] = true;
+  for (const char *field : {"port", "protocol", "address", "service"})
+    filter["ports"][0][field] = true;
+  for (const char *field : {"available", "running", "total", "error"})
+    filter["docker"][field] = true;
+  filter["docker"]["containers"][0]["name"] = true;
+  filter["docker"]["containers"][0]["state"] = true;
+  JsonObject pve = filter["proxmox"].to<JsonObject>();
+  for (const char *field : {"available", "state", "error", "guests_running", "guests_total",
+                            "tasks_failed", "tasks_cancelled", "history_interval_ms"})
+    pve[field] = true;
+  pve["history"][0]["cpu"] = true;
+  pve["history"][0]["ram"] = true;
+  for (const char *field : {"status", "cpu_percent", "memory_percent", "uptime_s"})
+    pve["nodes"][0][field] = true;
+  for (const char *field : {"id", "name", "type", "status", "cpu_percent", "memory_percent", "disk_percent"})
+    pve["guests"][0][field] = true;
+  for (const char *field : {"name", "status", "percent", "used_bytes", "total_bytes"})
+    pve["storage"][0][field] = true;
+  for (const char *field : {"label", "state", "started", "detail"})
+    pve["tasks"][0][field] = true;
+  filter["collection_status"]["*"]["ok"] = true;
+  filter["history_interval_ms"] = true;
+  filter["history"][0]["cpu"] = true;
+  filter["history"][0]["ram"] = true;
+}
+
+// A failed collector only turns the status into PARCIAL when this edition shows it.
+// profile: 0 = combined, 1 = Raspberry Pi only, 2 = Proxmox only.
+inline bool sectionShown(int profile, const char *section) {
+  const bool proxmox = strcmp(section, "proxmox") == 0;
+  if (profile == 1) return !proxmox;
+  if (profile == 2) return proxmox;
+  return true;
+}
+
+// Splits "https://host[:port][/path]" for the certificate-pinned connection.
+inline bool httpsEndpoint(const String &url, String &host, uint16_t &port) {
+  if (!url.startsWith("https://")) return false;
+  String rest = url.substring(8);
+  const int slash = rest.indexOf('/');
+  if (slash >= 0) rest = rest.substring(0, slash);
+  port = 443;
+  if (rest.startsWith("[")) {
+    const int close = rest.indexOf(']');
+    if (close < 0) return false;
+    host = rest.substring(1, close);
+    rest = rest.substring(close + 1);
+    if (rest.length() && !rest.startsWith(":")) return false;
+    if (rest.length()) rest = rest.substring(1);
+    else rest = "";
+  } else {
+    const int colon = rest.indexOf(':');
+    host = colon >= 0 ? rest.substring(0, colon) : rest;
+    rest = colon >= 0 ? rest.substring(colon + 1) : "";
+  }
+  if (rest.length()) {
+    long value = 0;
+    for (size_t i = 0; i < rest.length(); ++i) {
+      if (!isdigit(static_cast<unsigned char>(rest[i]))) return false;
+      value = value * 10 + (rest[i] - '0');
+      if (value > 65535) return false;
+    }
+    if (value < 1) return false;
+    port = static_cast<uint16_t>(value);
+  }
+  return host.length() > 0;
+}
+
 // A held or bouncing contact must never activate controls on the next page.
 class TouchLatch {
  public:

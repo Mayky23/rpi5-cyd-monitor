@@ -28,15 +28,17 @@ comandos exactos para instalar la API en tu servidor.
 - Inventario y estado de máquinas virtuales y contenedores LXC.
 - Uso y disponibilidad del almacenamiento.
 - Historial de tareas con detalle de errores y cancelaciones.
-- Estado `OFFLINE` sin conservar métricas antiguas cuando Proxmox está apagado.
+- Estado `OFFLINE` sin conservar métricas antiguas cuando Proxmox está apagado, y
+  `SIN CONFIG` en ámbar mientras la API aún no tiene los datos de Proxmox.
 - Diagnóstico, brillo nocturno, temas, animaciones y cuatro orientaciones.
-- Instalador de Windows que detecta la ESP32 y carga el firmware.
+- Instalador web (Chrome/Edge/Opera) o instalador de Windows que detecta la ESP32 y carga el firmware.
 
 ## Requisitos
 
 - ESP32-2432S028R y cable USB de datos.
 - Windows 10/11 con PowerShell y Python 3.10 o posterior.
-- Un equipo Debian/Linux para alojar la pasarela API.
+- Un equipo Debian/Linux con Python 3.10 o posterior para alojar la pasarela API
+  (Debian 12 / Raspberry Pi OS Bookworm en adelante).
 - Un token de Proxmox VE con el rol de solo lectura `PVEAuditor`.
 
 ## 1. Preparar Proxmox
@@ -60,21 +62,29 @@ En un equipo Debian/Linux, preferiblemente uno que permanezca encendido:
 ```bash
 git clone --branch proxmox --single-branch https://github.com/Mayky23/rpi5-cyd-monitor.git
 cd rpi5-cyd-monitor/server
-sudo ./install.sh
-sudo nano /opt/rpi-monitor/server/.env
+sudo ./install.sh \
+  --proxmox-url 'https://proxmox.example.lan:8006/api2/json' \
+  --proxmox-token-id 'monitor@pve!esp32' \
+  --proxmox-token-secret 'secreto-del-token-api' \
+  --proxmox-cert-sha256 'huella-sha256'
 ```
 
-Completa el archivo sin añadir comillas:
+El instalador comprueba el formato de los datos, genera el token de la API y
+conserva `/opt/rpi-monitor/server/.env` en futuras actualizaciones (para
+actualizar, ejecuta `git pull` y repite `sudo ./install.sh`). Consulta el token
+con `sudo grep '^MONITOR_API_TOKEN=' /opt/rpi-monitor/server/.env`.
+
+También puedes editar ese archivo a mano, sin comillas y sin cambiar
+`MONITOR_API_TOKEN`:
 
 ```dotenv
-MONITOR_API_TOKEN=un-token-largo-y-aleatorio
 PROXMOX_API_URL=https://proxmox.example.lan:8006/api2/json
 PROXMOX_TOKEN_ID=monitor@pve!esp32
 PROXMOX_TOKEN_SECRET=secreto-del-token-api
 PROXMOX_CERT_SHA256=huella-sha256-sin-dos-puntos
 ```
 
-Aplica la configuración:
+Después de editarlo, aplica la configuración:
 
 ```bash
 sudo systemctl restart rpi-monitor
@@ -85,7 +95,9 @@ y el panel muestra `OFFLINE` en lugar de datos que ya no son válidos.
 
 ## 3. Instalar el firmware
 
-Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
+La forma más sencilla es el [instalador web](https://mayky23.github.io/rpi5-cyd-monitor/).
+También puedes compilarlo y cargarlo con el instalador de Windows. Conecta la
+pantalla al PC y ejecuta:
 
 ```powershell
 .\Install.ps1
@@ -94,6 +106,14 @@ Conecta la pantalla al PC y ejecuta el único instalador del proyecto:
 El asistente instala las dependencias, solicita Wi-Fi, URL y token, detecta la
 placa, compila esta edición y la carga por USB. Los datos privados quedan en
 `firmware/include/config.local.h`, que Git ignora.
+
+La pantalla usa siempre la configuración más reciente: si antes usaste el
+instalador web y ahora cargas el firmware con `Install.ps1`, se aplican los datos
+nuevos; si después vuelves a la web, gana otra vez la web.
+
+Si la pasarela va por `https://`, indica la huella SHA-256 de su certificado (el
+asistente la pide, o usa `-ApiCertSha256`). Sin huella la conexión se cifra pero
+el certificado no se comprueba.
 
 ## Pantalla de arranque personal
 
@@ -113,7 +133,9 @@ excluido de Git y aparece como `PERSONAL` en la página Arranque.
 - Mantén el usuario de Proxmox con permisos estrictamente de auditoría.
 - No publiques `config.local.h`, `custom_splash.local.h` ni `server/.env`.
 - No expongas la pasarela directamente a Internet; utiliza una VPN o proxy HTTPS.
-- La huella SHA-256 impide aceptar un certificado de Proxmox distinto al previsto.
+- La huella SHA-256 impide aceptar un certificado de Proxmox distinto al previsto,
+  también al reconectar.
+- Con una pasarela `https://`, fija también su huella SHA-256 en el panel.
 
 ## Estructura
 
@@ -121,19 +143,24 @@ excluido de Git y aparece como `PERSONAL` en la página Arranque.
 |---|---|
 | `server/` | API FastAPI de solo lectura, instalador y servicio systemd. |
 | `firmware/` | Firmware PlatformIO, fuentes, animaciones y herramientas de generación y captura. |
-| `tests/` | Pruebas de la API. |
+| `tests/` | Pruebas de la API, de las herramientas y de la lógica del firmware en el PC (`tests/firmware`). |
 | `Install.ps1` | Instalador guiado para Windows. |
 
 ## Desarrollo
 
 ```powershell
-python -m pip install -r server/requirements-dev.txt
+python -m pip install -r server/requirements-dev.txt -r firmware/tools/requirements.txt
 python -m unittest discover -s tests -v
 python firmware/tools/build_gallery.py --check
+python firmware/tools/check_fonts.py
+python firmware/tools/check_theme_contrast.py
 pio run -d firmware -e esp32-2432S028R
+bash tests/firmware/run.sh   # lógica del firmware en el PC (Linux/WSL, tras compilar)
 ```
 
-El firmware se valida en CI. Las herramientas USB de `firmware/tools` capturan
+El firmware se valida en CI. Las mismas correcciones deben aplicarse en las ramas
+`rpi5`, `proxmox` y `rpi5-proxmox`, que comparten el código; el CI avisa si el
+código común se ha desincronizado. Las herramientas USB de `firmware/tools` capturan
 los paneles, orientaciones, temas y animaciones desde la placa real.
 
 Para regenerar la imagen de este README, instala

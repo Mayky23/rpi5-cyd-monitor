@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -23,7 +23,7 @@ jobs:
             firmware/tools/requirements.txt
 
       - name: Cache PlatformIO
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
@@ -41,6 +41,27 @@ jobs:
         run: |
           python -m unittest discover -s tests -v
           python firmware/tools/build_gallery.py --check
+          python firmware/tools/check_fonts.py
+          python firmware/tools/check_theme_contrast.py
 
       - name: Build firmware
-        run: pio run -d firmware -e esp32-2432S028R
+        run: pio run -d firmware -e esp32-2432S028R -e display-test
+
+      - name: Test firmware logic on the host
+        run: tests/firmware/run.sh
+
+      - name: Compare shared code with the other editions
+        run: .github/scripts/check_sync.sh
+
+  # Rebuilds the web installer so it always serves the firmware of the edition branches.
+  publish-installer:
+    needs: validate-and-build
+    if: github.event_name == 'push' && contains(fromJSON('["rpi5-proxmox", "rpi5", "proxmox"]'), github.ref_name)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Start the web installer workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref web --repo "${{ github.repository }}"

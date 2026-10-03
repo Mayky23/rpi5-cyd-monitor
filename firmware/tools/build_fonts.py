@@ -1,4 +1,7 @@
-"""Build compact 2-bit antialiased firmware fonts with Pillow 12.3.
+"""Build compact 2-bit antialiased firmware fonts with Pillow 12.1 or later.
+
+The basic layout engine is forced so the header is identical on Windows (Pillow
+without libraqm) and on Linux/CI (with libraqm, glyph advances differ by 1 px).
 
 Aileron Bold by Sora Sagano is No Rights Reserved:
 https://dotcolon.net/fonts/aileron/
@@ -13,8 +16,12 @@ FONT_PATH = Path(__file__).resolve().parents[1] / 'assets' / 'fonts' / 'Aileron-
 FONT_SIZES = (10, 11, 13, 16, 18, 22, 32)
 
 
+def load_font(size):
+    return ImageFont.truetype(str(FONT_PATH), size, layout_engine=ImageFont.Layout.BASIC)
+
+
 def rasterize(size):
-    font = ImageFont.truetype(str(FONT_PATH), size)
+    font = load_font(size)
     top = min(font.getbbox(chr(c))[1] for c in range(32, 127))
     bottom = max(font.getbbox(chr(c))[3] for c in range(32, 127))
     height = bottom - top

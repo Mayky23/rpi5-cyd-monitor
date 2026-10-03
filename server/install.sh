@@ -37,8 +37,24 @@ for key in "${!SETTINGS[@]}"; do
     echo "Valor no valido para $key"; exit 1
   fi
 done
-if [[ -n "${SETTINGS[MONITOR_API_TOKEN]:-}" && ${#SETTINGS[MONITOR_API_TOKEN]} -lt 16 ]]; then
-  echo "El token debe tener al menos 16 caracteres"; exit 1
+if [[ -n "${SETTINGS[MONITOR_API_TOKEN]:-}" ]]; then
+  token="${SETTINGS[MONITOR_API_TOKEN]}"
+  if (( ${#token} < 16 || ${#token} > 128 )) || [[ "$token" =~ [[:space:]] ]]; then
+    echo "El token debe tener entre 16 y 128 caracteres y no contener espacios"; exit 1
+  fi
+fi
+if [[ -n "${SETTINGS[PROXMOX_API_URL]:-}" ]] && ! [[ "${SETTINGS[PROXMOX_API_URL]}" =~ ^https://[^/[:space:]]+ ]]; then
+  echo "La URL de Proxmox debe empezar por https://, por ejemplo https://proxmox.lan:8006/api2/json"; exit 1
+fi
+if [[ -n "${SETTINGS[PROXMOX_TOKEN_ID]:-}" ]] && ! [[ "${SETTINGS[PROXMOX_TOKEN_ID]}" =~ ^[^@[:space:]]+@[^!@[:space:]]+![^!@[:space:]]+$ ]]; then
+  echo "El ID del token de Proxmox debe tener la forma usuario@realm!nombre"; exit 1
+fi
+if [[ -n "${SETTINGS[PROXMOX_CERT_SHA256]:-}" ]]; then
+  fingerprint="$(printf '%s' "${SETTINGS[PROXMOX_CERT_SHA256]}" | tr -d ': ' | tr 'A-F' 'a-f')"
+  if ! [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "La huella de Proxmox debe tener 64 caracteres hexadecimales (los dos puntos se ignoran)"; exit 1
+  fi
+  SETTINGS[PROXMOX_CERT_SHA256]="$fingerprint"
 fi
 
 if [[ -n "${SETTINGS[MONITOR_PORT]:-}" ]] &&    ! [[ "${SETTINGS[MONITOR_PORT]}" =~ ^[0-9]+$ && ${SETTINGS[MONITOR_PORT]} -ge 1 && ${SETTINGS[MONITOR_PORT]} -le 65535 ]]; then
@@ -69,6 +85,11 @@ PY
 
 apt-get update
 apt-get install -y python3-venv avahi-daemon
+# FastAPI necesita Python 3.10 o posterior (Raspberry Pi OS Bookworm trae 3.11).
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "Se necesita Python 3.10 o posterior; actualiza el sistema (Debian 12 / Raspberry Pi OS Bookworm)."
+  exit 1
+fi
 mkdir -p "$INSTALL_DIR/server"
 mkdir -p "$INSTALL_DIR/server/app" "$INSTALL_DIR/server/systemd"
 install -m 0644 "$SCRIPT_DIR/app/main.py" "$INSTALL_DIR/server/app/main.py"
